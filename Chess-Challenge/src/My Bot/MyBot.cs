@@ -4,63 +4,73 @@ using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private int[] PieceTypeToValue = new int[] {0, 1, 3, 3, 5, 9, int.MaxValue}; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private int[] PieceTypeToValue = new int[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
+
+    private double[,] PiecePositionTable = new double[,]{
+        // King
+        { -3, 4, 4, 5, -5, -4, -4, -3, -3, 4, 4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, -4, 4, -3, -2, -3, -3, -4, -4, -3, -3, -2,-1, 2, -2, -2, -2, -2, -2, 1, 2, 2, 0, 0, 0, 0, 2, 2 , 2, 3, 1, 0, 0, 1, 3, 2},
+        // Queen
+        { -2, -1, 1, .5, -.5, -1, -1, -2,-1, 0, 0, 0, 0, 0, 0, 1,-1, 0, .5, .5, .5, .5, 0, 1,-.5, 0, .5, .5, .5, .5, 0, -.5, 0, 0, .5, .5, .5, .5, 0, -.5,-1, .5, .5, .5, .5, .5, 0, 1,-1, 0, .5, 0, 0, 0, 0, 1, -2, -1, -1, -.5, .5, -1, 1, -2},
+        // Rook
+        { 0, 0, 0, 0, 0, 0, 0, 0, .5, 1, 1, 1, 1, 1, 1, .5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5, 0, 0, 0, .5, .5, 0, 0, 0},
+        // Bishop
+        { -2, -1, -1, -1, -1, -1, -1, -2, -1, 0, 0, 0, 0, 0, 0, 1, -1, 0, .5, 1, 1, .5, 0, 1, -1, .5, .5, 1, 1, .5, .5, 1, -1, 0, 1, 1, 1, 1, 0, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, .5, 0, 0, 0, 0, .5, -1, -2, -1, -1, -1, -1, -1, -1, -2},
+        // Knight
+        {-5, 4, 3, 3, 3, 3, 4, -5,-4, 2, 0, 0, 0, 0, 2, -4,-3, 0, 1, 1.5, 1.5, 1, 0, -3,-3, .5, 1.5, 2, 2, 1.5, .5, -3,-3, 0, 1.5, 2, 2, 1.5, 0, -3,-3, .5, 1, 1.5, 1.5, 1, .5, -3,-4, 2, 0, .5, .5, 0, -2, -4,-5, 4, 3, 3, 3, 3, 4, -5},
+        // Pawn
+        {0, 0, 0, 0, 0, 0, 0, 0,5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0}
+    };
+
     public Move Think(Board board, Timer timer)
     {
-        var depth = 4;
-        System.Console.WriteLine("Current Board Value: " + BoardValue(board));
-        return board.IsWhiteToMove ? Maxi(board, new Move(), int.MinValue, depth).Item1 : Mini(board, new Move(), int.MaxValue, depth).Item1;
+        var depth = 8;
+        var random = new Random();
+        var moves = board.GetLegalMoves();
+        var move = moves[random.Next(moves.Length)];
+        return Minimax(board, move, 0, depth, board.IsWhiteToMove).Item1;
     }
 
-    private (Move, int) Maxi(Board board, Move lastMove, int lastValue, int depth) {
-        if (depth == 0) 
-            return (lastMove, BoardValue(board));
-        (Move, int) max = (lastMove, int.MinValue);
-        foreach (Move move in board.GetLegalMoves())
-        {
-            board.MakeMove(move);
-            if (lastValue <= BoardValue(board))
-            {
-                var next = Mini(board, move, BoardValue(board), depth-1);
-                if (next.Item2 >= max.Item2) {
-                    max = (move, next.Item2);
-                }
-            }
-            board.UndoMove(move);
-        }
-        return max;
-    }
+    private (Move, int) Minimax(Board board, Move lastMove, int lastValue, int depth, bool isMax) {
+        // Depth check
+        if (depth == 0) return (lastMove, BoardValue(board));
 
-    private (Move, int) Mini(Board board, Move lastMove, int lastValue, int depth) {
-        if (depth == 0) 
-            return (lastMove, BoardValue(board));
-        (Move, int) min = (lastMove, int.MaxValue);
-        foreach (Move move in board.GetLegalMoves())
+        Move[] legalMoves = board.GetLegalMoves();
+        (Move, int) bestMove = (lastMove, isMax ? int.MinValue : int.MaxValue);
+
+        foreach (Move legalMove in legalMoves) 
         {
-            board.MakeMove(move);
-            if (lastValue >= BoardValue(board))
+            board.MakeMove(legalMove);
+            // a-b pruning
+            if ( !( ( isMax && BoardValue(board) > lastValue ) || ( !isMax && BoardValue(board) < lastValue ) ) ) 
             {
-                var next = Maxi(board, move, BoardValue(board), depth-1);
-                if (next.Item2 <= min.Item2) {
-                    min = (move, next.Item2);
-                }
+                board.UndoMove(legalMove);
+                continue;
             }
-            board.UndoMove(move);
+
+            var next = Minimax(board, legalMove, BoardValue(board), depth-1, !isMax);
+            if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
+            {
+                bestMove = (legalMove, next.Item2);
+            }
+
+            board.UndoMove(legalMove);
         }
-        return min;
+
+        return bestMove;
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
     private int BoardValue(Board board) 
     {
-        int value = 0;
+        int materialScore = 0;
         foreach (var list in board.GetAllPieceLists()) 
         {
             foreach (var piece in list) 
             {
-                value += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
+                // TODO: mobility score
+                materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
             }
         }
-        return value;
+        return materialScore;
     }
 }
