@@ -1,144 +1,287 @@
-﻿/*using ChessChallenge.API;
-using System;
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using ChessChallenge.API;
 
 namespace ChessChallenge.Example
 {
-    // A simple bot that can spot mate in one, and always captures the most valuable piece it can.
-    // Plays randomly otherwise.
+    /// <summary> Stockfish </summary>
     public class EvilBot : IChessBot
     {
-        // Piece values: null, pawn, knight, bishop, rook, queen, king
-        int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 };
+
+        private Stockfish stockfish;
+
+        public EvilBot()
+        {
+            System.Console.WriteLine("OS detected:   " + (IsLinux ? "Linux" : "Windows"));
+            System.Console.WriteLine("AVX supported: " + (HasAvxSupport ? "Yes" : "No"));
+            string path = (HasAvxSupport, IsLinux) switch
+            {
+                (true, true) => GetResourcePath("Stockfish", "avx2", "linux", "stockfish-ubuntu-x86-64-avx2"),
+                (false, true) => GetResourcePath("Stockfish", "popcnt", "linux", "stockfish-ubuntu-x86-64-modern"),
+                (true, false) => GetResourcePath("Stockfish", "avx2", "windows", "stockfish-windows-x86-64-avx2"),
+                (false, false) => GetResourcePath("Stockfish", "popcnt", "windows", "stockfish-windows-x86-64-modern"),
+            };
+            stockfish = new Stockfish(path, depth: 32, settings: new Stockfish.Settings
+            {
+                Threads = 8,
+                Elo = 500,
+                MultiPV = 1,
+            });
+        }
+
+        public static string GetResourcePath(params string[] localPath)
+        {
+            return Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "resources", Path.Combine(localPath));
+        }
+
+        public static bool IsLinux
+        {
+            get
+            {
+                int p = (int)Environment.OSVersion.Platform;
+                return (p == 4) || (p == 6) || (p == 128);
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern long GetEnabledXStateFeatures();
+
+        public static bool HasAvxSupport
+        {
+            get
+            {
+                try
+                {
+                    return (GetEnabledXStateFeatures() & 4) != 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+        }
 
         public Move Think(Board board, Timer timer)
         {
-            Move[] allMoves = board.GetLegalMoves();
+            stockfish.SetFenPosition(board.GetFenString());
+            return new Move(stockfish.GetBestMoveTime(), board);
+        }
 
-            // Pick a random move to play if nothing better is found
-            Random rng = new();
-            Move moveToPlay = allMoves[rng.Next(allMoves.Length)];
-            int highestValueCapture = 0;
+        private class Stockfish
+        {
 
-            foreach (Move move in allMoves)
+            private StockfishProcess process;
+            private Settings settings;
+            private int depth;
+            private const int MAX_TRIES = 200;
+
+            public Stockfish(string path, int depth = 4, Settings? settings = null)
             {
-                // Always play checkmate in one
-                if (MoveIsCheckmate(board, move))
+                this.settings = settings == null ? new Settings() : settings;
+                this.process = new StockfishProcess(path);
+                this.depth = depth;
+                foreach (var property in this.settings.GetPropertiesAsDictionary())
                 {
-                    moveToPlay = move;
-                    break;
+                    SetOption(property.Key, property.Value);
                 }
+                StartNewGame();
+            }
 
-                // Find highest value capture
-                Piece capturedPiece = board.GetPiece(move.TargetSquare);
-                int capturedPieceValue = pieceValues[(int)capturedPiece.PieceType];
-
-                if (capturedPieceValue > highestValueCapture)
+            private bool IsReady()
+            {
+                Send("isready");
+                var tries = 0;
+                while (tries < MAX_TRIES)
                 {
-                    moveToPlay = move;
-                    highestValueCapture = capturedPieceValue;
+                    ++tries;
+
+                    if (process.ReadLine() == "readyok")
+                    {
+                        return true;
+                    }
+                }
+                throw new ApplicationException("Max tries exceeded!");
+            }
+
+            private void SetOption(string name, string value)
+            {
+                Send($"setoption name {name} value {value}");
+            }
+
+            private void StartNewGame()
+            {
+                Send("ucinewgame");
+                if (!IsReady())
+                {
+                    throw new ApplicationException();
                 }
             }
 
-            return moveToPlay;
-        }
-
-        // Test if this move gives checkmate
-        bool MoveIsCheckmate(Board board, Move move)
-        {
-            board.MakeMove(move);
-            bool isMate = board.IsInCheckmate();
-            board.UndoMove(move);
-            return isMate;
-        }
-    }
-}*/
-using System;
-using System.Collections.Generic;
-using ChessChallenge.API;
-namespace ChessChallenge.Example {
-    public class EvilBot : IChessBot
-    {
-        private double[] PieceTypeToValue = new double[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
-
-        // TODO: Mirroring / Compression?
-        private double[][] PiecePositionTable = new double[][]{
-            // Pawn
-            new double[]{0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0},
-            // Knight
-            new double[]{-5, 4, 3, 3, 3, 3, 4, -5,-4, 2, 0, 0, 0, 0, 2, -4,-3, 0, 1, 1.5, 1.5, 1, 0, -3,-3, .5, 1.5, 2, 2, 1.5, .5, -3,-3, 0, 1.5, 2, 2, 1.5, 0, -3,-3, .5, 1, 1.5, 1.5, 1, .5, -3,-4, 2, 0, .5, .5, 0, -2, -4,-5, 4, 3, 3, 3, 3, 4, -5},
-            // Bishop
-            new double[]{ -2, -1, -1, -1, -1, -1, -1, -2, -1, 0, 0, 0, 0, 0, 0, 1, -1, 0, .5, 1, 1, .5, 0, 1, -1, .5, .5, 1, 1, .5, .5, 1, -1, 0, 1, 1, 1, 1, 0, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, .5, 0, 0, 0, 0, .5, -1, -2, -1, -1, -1, -1, -1, -1, -2},
-            // Rook
-            new double[]{ 0, 0, 0, 0, 0, 0, 0, 0, .5, 1, 1, 1, 1, 1, 1, .5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5, 0, 0, 0, .5, .5, 0, 0, 0},
-            // Queen
-            new double[]{ -2, -1, 1, .5, -.5, -1, -1, -2,-1, 0, 0, 0, 0, 0, 0, 1,-1, 0, .5, .5, .5, .5, 0, 1,-.5, 0, .5, .5, .5, .5, 0, -.5, 0, 0, .5, .5, .5, .5, 0, -.5,-1, .5, .5, .5, .5, .5, 0, 1,-1, 0, .5, 0, 0, 0, 0, 1, -2, -1, -1, -.5, .5, -1, 1, -2},
-            // King
-            new double[]{ -3, 4, 4, 5, -5, -4, -4, -3, -3, 4, 4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, -4, 4, -3, -2, -3, -3, -4, -4, -3, -3, -2,-1, 2, -2, -2, -2, -2, -2, 1, 2, 2, 0, 0, 0, 0, 2, 2 , 2, 3, 1, 0, 0, 1, 3, 2},
-        };
-
-        public Move Think(Board board, Timer timer)
-        {
-            var depth = 4;
-            var moves = board.GetLegalMoves();
-            var move = moves[new Random().Next(moves.Length)];
-            var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
-            return chosen.Item1;
-        }
-
-        private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax) {
-            // Depth check
-            if (depth == 0) return (lastMove, BoardValue(board));
-
-            Move[] legalMoves = board.GetLegalMoves();
-            (Move, double) bestMove = (lastMove, lastValue);
-
-            foreach (Move legalMove in legalMoves) 
+            public void SetFenPosition(string fenPosition)
             {
-                board.MakeMove(legalMove);
-                // a-b pruning
-                if ( !( ( isMax && BoardValue(board) > lastValue ) || ( !isMax && BoardValue(board) < lastValue ) ) ) 
-                {
-                    board.UndoMove(legalMove);
-                    continue;
-                }
-
-                var next = Minimax(board, legalMove, BoardValue(board), depth-1, !isMax);
-                if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
-                {
-                    bestMove = (legalMove, next.Item2);
-                }
-
-                board.UndoMove(legalMove);
+                StartNewGame();
+                Send($"position fen {fenPosition}");
             }
 
-            return bestMove;
-        }
-
-        /// <summary> Postive = White is better / Negative = Black is better </summary>
-        private double BoardValue(Board board) 
-        {
-            double materialScore = 0;
-            double positionScore = 0;
-            foreach (var list in board.GetAllPieceLists()) 
+            public string GetBestMoveTime(int time = 1000)
             {
-                foreach (var piece in list) 
+                GoTime(time);
+                var tries = 0;
+                while (true)
                 {
-                    positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType-1][piece.IsWhite ? 63 - piece.Square.Index : piece.Square.Index]);
-                    materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
+                    if (tries > MAX_TRIES)
+                    {
+                        throw new ApplicationException("Max tries exceeded!");
+                    }
+
+                    var data = ReadLineAsList();
+                    if (data[0] == "bestmove")
+                    {
+                        if (data[1] == "(none)")
+                        {
+                            return null;
+                        }
+
+                        return data[1];
+                    }
                 }
             }
-            return materialScore 
-                + positionScore
-                + (board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0) 
-                + (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
-                + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
-        }
 
-        private double BoardvalueWithMove(Board board, Move move) {
-            board.MakeMove(move);
-            var s = BoardValue(board);
-            board.UndoMove(move);
-            return s;
+            private void GoTime(int time)
+            {
+                Send($"go movetime {time}", estimatedTime: time + 100);
+            }
+
+            private void Send(string command, int estimatedTime = 100)
+            {
+                process.WriteLine(command);
+                process.Wait(estimatedTime);
+            }
+
+            private List<string> ReadLineAsList()
+            {
+                var data = process.ReadLine();
+                return data.Split(' ').ToList();
+            }
+
+            public class Settings
+            {
+                public int Contempt { get; set; }
+                public int Threads { get; set; }
+                public bool Ponder { get; set; }
+                public int MultiPV { get; set; }
+                public int Elo { get; set; }
+                public int MoveOverhead { get; set; }
+                public int SlowMover { get; set; }
+                public bool UCIChess960 { get; set; }
+
+                public Settings(
+                    int contempt = 0,
+                    int threads = 0,
+                    bool ponder = false,
+                    int multiPV = 1,
+                    int elo = 1200,
+                    int moveOverhead = 30,
+                    int slowMover = 80,
+                    bool uciChess960 = false
+                )
+                {
+                    Contempt = contempt;
+                    Ponder = ponder;
+                    Threads = threads;
+                    MultiPV = multiPV;
+                    Elo = elo;
+                    MoveOverhead = moveOverhead;
+                    SlowMover = slowMover;
+                    UCIChess960 = uciChess960;
+                }
+
+                public Dictionary<string, string> GetPropertiesAsDictionary()
+                {
+                    return new Dictionary<string, string>
+                    {
+                        ["Contempt"] = Contempt.ToString(),
+                        ["Threads"] = Threads.ToString(),
+                        ["Ponder"] = Ponder.ToString(),
+                        ["MultiPV"] = MultiPV.ToString(),
+                        ["UCI_LimitStrength"] = "true",
+                        ["UCI_Elo"] = Elo.ToString(),
+                        ["Move Overhead"] = MoveOverhead.ToString(),
+                        ["Slow Mover"] = SlowMover.ToString(),
+                        ["UCI_Chess960"] = UCIChess960.ToString(),
+                    };
+                }
+            }
+
+            private class StockfishProcess
+            {
+
+                private ProcessStartInfo processStartInfo { get; set; }
+                private Process process { get; set; }
+                private bool debug;
+
+                public StockfishProcess(string path, bool debug = false)
+                {
+                    processStartInfo = new ProcessStartInfo
+                    {
+                        FileName = path,
+                        UseShellExecute = false,
+                        RedirectStandardError = true,
+                        RedirectStandardInput = true,
+                        RedirectStandardOutput = true
+                    };
+                    process = new Process
+                    {
+                        StartInfo = processStartInfo
+                    };
+                    this.debug = debug;
+                    System.Console.WriteLine("Starting process...");
+                    process.Start();
+                    System.Console.WriteLine("Process started!");
+                    System.Console.WriteLine(ReadLine());
+                }
+
+                public void Wait(int millisecond)
+                {
+                    this.process.WaitForExit(millisecond);
+                }
+
+                public void WriteLine(string command)
+                {
+                    if (this.debug) System.Console.WriteLine("$> " + command);
+                    if (process.StandardInput == null)
+                    {
+                        throw new NullReferenceException();
+                    }
+                    process.StandardInput.WriteLine(command);
+                    process.StandardInput.Flush();
+                }
+
+                public string ReadLine()
+                {
+                    if (process.StandardOutput == null)
+                    {
+                        throw new NullReferenceException();
+                    }
+                    var line = process.StandardOutput.ReadLine();
+                    if (this.debug) System.Console.WriteLine("$: " + line);
+                    return line;
+                }
+
+                public void Start()
+                {
+                    process.Start();
+                }
+
+                ~StockfishProcess()
+                {
+                    process.Close();
+                }
+            }
         }
     }
 }

@@ -50,6 +50,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="resources\Stockfish\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="src\Framework\Chess\" />
   </ItemGroup>
 
