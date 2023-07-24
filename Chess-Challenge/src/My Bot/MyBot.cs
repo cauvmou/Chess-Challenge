@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
@@ -9,32 +8,85 @@ public class MyBot : IChessBot
     // TODO: Mirroring / Compression?
     private double[][] PiecePositionTable = new double[][]{
         // Pawn
-        new double[]{0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0},
+        mirror(new double[]
+        {
+            -3,  -3,  -3,  -3,
+          -2.5,  -2,  -2,  -5,
+          -2.5,  -3,  -4,  -3,
+            -3,  -3,  -2, 1.5,
+          -2.5,-2.5,  -1,   2,
+            -2,  -2,   1,   2,
+             4,   4,   4,   4,
+            -3,  -3,  -3,  -3,
+        }),
         // Knight
-        new double[]{-5, 4, 3, 3, 3, 3, 4, -5,-4, 2, 0, 0, 0, 0, 2, -4,-3, 0, 1, 1.5, 1.5, 1, 0, -3,-3, .5, 1.5, 2, 2, 1.5, .5, -3,-3, 0, 1.5, 2, 2, 1.5, 0, -3,-3, .5, 1, 1.5, 1.5, 1, .5, -3,-4, 2, 0, .5, .5, 0, -2, -4,-5, 4, 3, 3, 3, 3, 4, -5},
+        mirror(new double[]
+        {
+            -5,  -4,  -3,  -3,
+            -4,  -2,   1,   2,
+            -3,   1,   3,   4,
+            -3,   2,   4,   5,
+            -3,   2,   4,   5,
+            -3,   1,   3,   4,
+            -4,  -2,   1,   2,
+            -5,  -4,  -3,  -3
+        }),
         // Bishop
-        new double[]{ -2, -1, -1, -1, -1, -1, -1, -2, -1, 0, 0, 0, 0, 0, 0, 1, -1, 0, .5, 1, 1, .5, 0, 1, -1, .5, .5, 1, 1, .5, .5, 1, -1, 0, 1, 1, 1, 1, 0, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, .5, 0, 0, 0, 0, .5, -1, -2, -1, -1, -1, -1, -1, -1, -2},
+        mirror(new double[]
+        {
+            -1,  -3,  -3,  -3,
+            -3, 1.5,   0,   0,
+            -3,   2, 1.5, 1.5,
+            -3,  .5, 3.5,   2,
+            -3,   1,   1,   2,
+            -3,   0,   1,   2,
+            -3,   0,   0,   0,
+            -5,  -3,  -3,  -3
+        }),
         // Rook
-        new double[]{ 0, 0, 0, 0, 0, 0, 0, 0, .5, 1, 1, 1, 1, 1, 1, .5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5, 0, 0, 0, .5, .5, 0, 0, 0},
+        mirror(new double[]
+        {
+            -2,  -2,   0,   1,
+            -5,  -2,  -2,  -2,
+            -5,  -2,  -2,  -2,
+            -5,  -2,  -2,  -2,
+            -5,  -2,  -2,  -2,
+            -5,  -2,  -2,  -2,
+           1.5,   4,   4,   4,
+            .5,  .5,  .5,  .5
+        }),
         // Queen
-        new double[]{ -2, -1, 1, .5, -.5, -1, -1, -2,-1, 0, 0, 0, 0, 0, 0, 1,-1, 0, .5, .5, .5, .5, 0, 1,-.5, 0, .5, .5, .5, .5, 0, -.5, 0, 0, .5, .5, .5, .5, 0, -.5,-1, .5, .5, .5, .5, .5, 0, 1,-1, 0, .5, 0, 0, 0, 0, 1, -2, -1, -1, -.5, .5, -1, 1, -2},
+        mirror(new double[]
+        {
+            -4,  -2,  -2,  -1,
+            -2,   1,   2,   3,
+            -2,   2,   4,   5,
+            -1,   3,   5,   5,
+            -1,   3,   5,   5,
+            -2,   2,   4,   5,
+            -2,   1,   2,   3,
+            -4,  -2,  -2,  -1
+        }),
         // King
-        new double[]{ -3, 4, 4, 5, -5, -4, -4, -3, -3, 4, 4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, -4, 4, -3, -2, -3, -3, -4, -4, -3, -3, -2,-1, 2, -2, -2, -2, -2, -2, 1, 2, 2, 0, 0, 0, 0, 2, 2 , 2, 3, 1, 0, 0, 1, 3, 2},
+        new double[]
+        {
+             1,   1,   2,   0,   0,   0,   2,   1,
+             1,  .5, -.5, -.5, -.5, -.5,  .5,   1,
+             0,  -1,  -1,  -1,  -1,  -1,  -1,   0,
+            -2,  -2,  -2,  -4,  -4,  -2,  -2,  -2,
+            -2,  -3,  -3,  -5,  -5,  -3,  -3,  -2,
+            -2,  -3,  -3,  -5,  -5,  -3,  -3,  -2,
+            -3,  -4,  -4,  -5,  -5,  -4,  -3,  -3,
+            -3,  -4,  -4,  -5,  -5,  -4,  -3,  -3
+        }
     };
 
     public Move Think(Board board, Timer timer)
     {
-        /*var pieceCount = 0;
-        for (int i = 0; i < 64; i++)
-        {
-            pieceCount += (int)(board.AllPiecesBitboard >> i) & 1;
-        }*/
         var depth = 4;
         var moves = board.GetLegalMoves();
         var move = moves[new Random().Next(moves.Length)];
-        System.Console.WriteLine("Fallback: " + move);
         var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
-        System.Console.WriteLine("Chose:    " + chosen.Item1);
         return chosen.Item1;
     }
 
@@ -42,10 +94,9 @@ public class MyBot : IChessBot
         // Depth check
         if (depth == 0) return (lastMove, BoardValue(board));
 
-        Move[] legalMoves = board.GetLegalMoves();
         (Move, double) bestMove = (lastMove, isMax ? double.MinValue : double.MaxValue);
 
-        foreach (Move legalMove in legalMoves) 
+        foreach (Move legalMove in board.GetLegalMoves()) 
         {
             board.MakeMove(legalMove);
             // a-b pruning
@@ -92,5 +143,19 @@ public class MyBot : IChessBot
         var s = BoardValue(board);
         board.UndoMove(move);
         return s;
+    }
+
+    private static double[] mirror(double[] half)
+    {
+        var ret = new double[64];
+
+        for (int i = 0; i < 32; i += 4)
+        {
+            Array.Copy(half, i, ret, i * 2, 4);
+            Array.Reverse(half, i, 4);
+            Array.Copy(half, i, ret, i * 2 + 4, 4);
+        }
+
+        return ret;
     }
 }
