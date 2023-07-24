@@ -45,61 +45,53 @@ public class MyBot : IChessBot
         }*/
 
         // Console.WriteLine("out: " + output[0]);
-        Console.WriteLine(BoardValue(board, wandb));
+        Console.WriteLine(BoardValue(board));
+        Console.WriteLine("Material score: " + MaterialScore(board));
         // Console.WriteLine(res.ToString());
         // Console.WriteLine(json_params);
 
-        Move? bestMove = null;
-        Move[] moves = board.GetLegalMoves();
+        var depth = 3;
 
-        MiniMax(board, 3, 0, ref bestMove, board.IsWhiteToMove, wandb);
-        return bestMove??moves[0];
+        var moves = board.GetLegalMoves();
+        var move = moves[new Random().Next(moves.Length)];
+        // System.Console.WriteLine("Fallback: " + move);
+        var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
+        // System.Console.WriteLine("Chose:    " + chosen.Item1);
+
+
+        return chosen.Item1;
     }
 
-        public float MiniMax(Board board, int depth, int currentDepth, ref Move? bestMove, bool isMax, IList<Param> wandb)
-    {
-        if (currentDepth == depth)
+        private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax) {
+        // Depth check
+        if (depth == 0) return (lastMove, BoardValue(board));
+
+        Move[] legalMoves = board.GetLegalMoves();
+        (Move, double) bestMove = (lastMove, isMax ? double.MinValue : double.MaxValue);
+
+        foreach (Move legalMove in legalMoves) 
         {
-            return BoardValue(board, wandb);
-        }
-        if (isMax) {
-            float value = float.NegativeInfinity;
-            foreach (Move move in board.GetLegalMoves())
+            board.MakeMove(legalMove);
+            // a-b pruning
+            if ( !( ( isMax && BoardValue(board) >= lastValue ) || ( !isMax && BoardValue(board) <= lastValue ) ) ) 
             {
-                board.MakeMove(move);
-                float score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax, wandb);
-                if (score > value) 
-                {
-                    value = score;
-                    if (currentDepth == 0) 
-                    {
-                        bestMove = move;
-                    }
-                        
-                }
-                board.UndoMove(move);
+                board.UndoMove(legalMove);
+                continue;
             }
-            return value;
-        } else {
-            float value = float.PositiveInfinity;
-            foreach (Move move in board.GetLegalMoves())
+
+            var next = Minimax(board, legalMove, BoardValue(board), depth-1, !isMax);
+            if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
             {
-                board.MakeMove(move);
-                float score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax, wandb);
-                if (score < value) 
-                {
-                    value = score;
-                    if (currentDepth == 0) 
-                    {
-                        bestMove = move;
-                    }
-                }
-                board.UndoMove(move);
+                bestMove = (legalMove, next.Item2);
             }
-            return value;
+
+            board.UndoMove(legalMove);
         }
+
+        return bestMove;
     }
 
+        
     private void ConvertChar(char c, ref IList<float> neuralInput) {
         if (c >= '0' && c <= '8') {
             for (int i = 0; i < c - '0'; i++) {
@@ -135,7 +127,7 @@ public class MyBot : IChessBot
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private float BoardValue(Board board, IList<Param> wandb) 
+    private float BoardValue(Board board) 
     {
         // Console.WriteLine(neuralInput[0].ToString());
 
@@ -151,6 +143,7 @@ public class MyBot : IChessBot
                     sum += input[row] * param.weights[row * param.dims[1] + col];
                 }
                 float val = sum + param.bias[col];
+                // next may be tanh()
                 if (val > 0 || currentLayer == wandb.Count-1) {
                     output[col] = val;
                 } else {
@@ -162,7 +155,10 @@ public class MyBot : IChessBot
             currentLayer+=1;
         }
         return output[0];
-        /*int materialScore = 0;
+    }
+
+    private int MaterialScore(Board board) {
+        int materialScore = 0;
         foreach (var list in board.GetAllPieceLists()) 
         {
             foreach (var piece in list) 
@@ -170,6 +166,13 @@ public class MyBot : IChessBot
                 materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
             }
         }
-        return materialScore;*/
+        return materialScore;
+    }
+
+        private double BoardvalueWithMove(Board board, Move move) {
+            board.MakeMove(move);
+            var s = BoardValue(board);
+            board.UndoMove(move);
+            return s;
     }
 }
