@@ -32,8 +32,9 @@ public class MyBot : IChessBot
         var depth = 4;
         var moves = board.GetLegalMoves();
         var move = moves[new Random().Next(moves.Length)];
+        System.Console.WriteLine("Fallback: " + move);
         var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
-        System.Console.WriteLine("Chose: " + chosen);
+        System.Console.WriteLine("Chose:    " + chosen.Item1);
         return chosen.Item1;
     }
 
@@ -42,13 +43,13 @@ public class MyBot : IChessBot
         if (depth == 0) return (lastMove, BoardValue(board));
 
         Move[] legalMoves = board.GetLegalMoves();
-        (Move, double) bestMove = (lastMove, lastValue);
+        (Move, double) bestMove = (lastMove, isMax ? double.MinValue : double.MaxValue);
 
         foreach (Move legalMove in legalMoves) 
         {
             board.MakeMove(legalMove);
             // a-b pruning
-            if ( !( ( isMax && BoardValue(board) > lastValue ) || ( !isMax && BoardValue(board) < lastValue ) ) ) 
+            if ( !( ( isMax && BoardValue(board) >= lastValue ) || ( !isMax && BoardValue(board) <= lastValue ) ) ) 
             {
                 board.UndoMove(legalMove);
                 continue;
