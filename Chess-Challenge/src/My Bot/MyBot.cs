@@ -3,7 +3,7 @@ using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private double[] PieceTypeToValue = new double[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private double[] PieceTypeToValue = new double[] { 0, 100, 300, 300, 500, 900, 10000 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
     private double[][] PiecePositionTable = new double[][]{
@@ -90,24 +90,25 @@ public class MyBot : IChessBot
         return chosen.Item1;
     }
 
-    private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax) {
+    private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax)
+    {
         // Depth check
         if (depth == 0) return (lastMove, BoardValue(board));
 
         (Move, double) bestMove = (lastMove, isMax ? double.MinValue : double.MaxValue);
 
-        foreach (Move legalMove in board.GetLegalMoves()) 
+        foreach (Move legalMove in board.GetLegalMoves())
         {
             board.MakeMove(legalMove);
             // a-b pruning
-            if ( !( ( isMax && BoardValue(board) >= lastValue ) || ( !isMax && BoardValue(board) <= lastValue ) ) ) 
+            if (!((isMax && BoardValue(board) >= lastValue) || (!isMax && BoardValue(board) <= lastValue)))
             {
                 board.UndoMove(legalMove);
                 continue;
             }
 
-            var next = Minimax(board, legalMove, BoardValue(board), depth-1, !isMax);
-            if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
+            var next = Minimax(board, legalMove, BoardValue(board), depth - 1, !isMax);
+            if ((isMax && next.Item2 > bestMove.Item2) || (!isMax && next.Item2 < bestMove.Item2))
             {
                 bestMove = (legalMove, next.Item2);
             }
@@ -119,26 +120,27 @@ public class MyBot : IChessBot
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private double BoardValue(Board board) 
+    private double BoardValue(Board board)
     {
         double materialScore = 0;
         double positionScore = 0;
-        foreach (var list in board.GetAllPieceLists()) 
+        foreach (var list in board.GetAllPieceLists())
         {
-            foreach (var piece in list) 
+            foreach (var piece in list)
             {
-                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType-1][piece.IsWhite ? 63 - piece.Square.Index : piece.Square.Index]);
+                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]);
                 materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
             }
         }
-        return materialScore 
+        return materialScore
             + positionScore
-            + (board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0) 
+            + (board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0)
             + (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
             + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
     }
 
-    private double BoardvalueWithMove(Board board, Move move) {
+    private double BoardvalueWithMove(Board board, Move move)
+    {
         board.MakeMove(move);
         var s = BoardValue(board);
         board.UndoMove(move);
