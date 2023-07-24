@@ -27,7 +27,7 @@ namespace ChessChallenge.Example
             };
             stockfish = new Stockfish(path, depth: 16, settings: new Stockfish.Settings
             {
-                Threads = 8,
+                Threads = 12,
                 Elo = 1200,
                 SlowMover = 10,
                 MoveOverhead = 0,
