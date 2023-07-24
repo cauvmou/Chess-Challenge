@@ -28,7 +28,7 @@ namespace ChessChallenge.Example
             stockfish = new Stockfish(path, depth: 32, settings: new Stockfish.Settings
             {
                 Threads = 8,
-                SkillLevel = 20,
+                Elo = 500,
                 MultiPV = 1,
             });
         }
@@ -174,7 +174,7 @@ namespace ChessChallenge.Example
                 public int Threads { get; set; }
                 public bool Ponder { get; set; }
                 public int MultiPV { get; set; }
-                public int SkillLevel { get; set; }
+                public int Elo { get; set; }
                 public int MoveOverhead { get; set; }
                 public int SlowMover { get; set; }
                 public bool UCIChess960 { get; set; }
@@ -184,7 +184,7 @@ namespace ChessChallenge.Example
                     int threads = 0,
                     bool ponder = false,
                     int multiPV = 1,
-                    int skillLevel = 20,
+                    int elo = 1200,
                     int moveOverhead = 30,
                     int slowMover = 80,
                     bool uciChess960 = false
@@ -194,7 +194,7 @@ namespace ChessChallenge.Example
                     Ponder = ponder;
                     Threads = threads;
                     MultiPV = multiPV;
-                    SkillLevel = skillLevel;
+                    Elo = elo;
                     MoveOverhead = moveOverhead;
                     SlowMover = slowMover;
                     UCIChess960 = uciChess960;
@@ -208,7 +208,8 @@ namespace ChessChallenge.Example
                         ["Threads"] = Threads.ToString(),
                         ["Ponder"] = Ponder.ToString(),
                         ["MultiPV"] = MultiPV.ToString(),
-                        ["Skill Level"] = SkillLevel.ToString(),
+                        ["UCI_LimitStrength"] = "true",
+                        ["UCI_Elo"] = Elo.ToString(),
                         ["Move Overhead"] = MoveOverhead.ToString(),
                         ["Slow Mover"] = SlowMover.ToString(),
                         ["UCI_Chess960"] = UCIChess960.ToString(),
