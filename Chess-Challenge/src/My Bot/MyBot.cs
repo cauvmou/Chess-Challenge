@@ -127,7 +127,7 @@ public class MyBot : IChessBot
         {
             foreach (var piece in list) 
             {
-                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType-1][piece.IsWhite ? 63 - piece.Square.Index : piece.Square.Index]);
+                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType-1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]);
                 materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
             }
         }

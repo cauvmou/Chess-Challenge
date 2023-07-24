@@ -25,11 +25,12 @@ namespace ChessChallenge.Example
                 (true, false) => GetResourcePath("Stockfish", "avx2", "windows", "stockfish-windows-x86-64-avx2"),
                 (false, false) => GetResourcePath("Stockfish", "popcnt", "windows", "stockfish-windows-x86-64-modern"),
             };
-            stockfish = new Stockfish(path, depth: 32, settings: new Stockfish.Settings
+            stockfish = new Stockfish(path, depth: 16, settings: new Stockfish.Settings
             {
                 Threads = 8,
                 Elo = 1200,
                 MultiPV = 1,
+                SlowMover = 10,
             });
         }
 
