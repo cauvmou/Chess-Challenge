@@ -4,11 +4,12 @@ using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private int[] PieceTypeToValue = new int[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private double[] PieceTypeToValue = new double[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
+    // TODO: Mirroring / Compression?
     private double[][] PiecePositionTable = new double[][]{
         // Pawn
-        new double[]{0, 0, 0, 0, 0, 0, 0, 0,5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0},
+        new double[]{0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0},
         // Knight
         new double[]{-5, 4, 3, 3, 3, 3, 4, -5,-4, 2, 0, 0, 0, 0, 2, -4,-3, 0, 1, 1.5, 1.5, 1, 0, -3,-3, .5, 1.5, 2, 2, 1.5, .5, -3,-3, 0, 1.5, 2, 2, 1.5, 0, -3,-3, .5, 1, 1.5, 1.5, 1, .5, -3,-4, 2, 0, .5, .5, 0, -2, -4,-5, 4, 3, 3, 3, 3, 4, -5},
         // Bishop
@@ -23,25 +24,31 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
+        /*var pieceCount = 0;
+        for (int i = 0; i < 64; i++)
+        {
+            pieceCount += (int)(board.AllPiecesBitboard >> i) & 1;
+        }*/
         var depth = 4;
-        var random = new Random();
         var moves = board.GetLegalMoves();
-        var move = moves[random.Next(moves.Length)];
-        return Minimax(board, move, 0, depth, board.IsWhiteToMove).Item1;
+        var move = moves[new Random().Next(moves.Length)];
+        var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
+        System.Console.WriteLine("Chose: " + chosen);
+        return chosen.Item1;
     }
 
-    private (Move, int) Minimax(Board board, Move lastMove, int lastValue, int depth, bool isMax) {
+    private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax) {
         // Depth check
         if (depth == 0) return (lastMove, BoardValue(board));
 
         Move[] legalMoves = board.GetLegalMoves();
-        (Move, int) bestMove = (lastMove, isMax ? int.MinValue : int.MaxValue);
+        (Move, double) bestMove = (lastMove, lastValue);
 
         foreach (Move legalMove in legalMoves) 
         {
             board.MakeMove(legalMove);
             // a-b pruning
-            if ( !( ( isMax && BoardValue(board) >= lastValue ) || ( !isMax && BoardValue(board) <= lastValue ) ) ) 
+            if ( !( ( isMax && BoardValue(board) > lastValue ) || ( !isMax && BoardValue(board) < lastValue ) ) ) 
             {
                 board.UndoMove(legalMove);
                 continue;
@@ -60,19 +67,29 @@ public class MyBot : IChessBot
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private int BoardValue(Board board) 
+    private double BoardValue(Board board) 
     {
-        int materialScore = 0;
-        int mobilityScore = 0;
+        double materialScore = 0;
+        double positionScore = 0;
         foreach (var list in board.GetAllPieceLists()) 
         {
             foreach (var piece in list) 
             {
-                double[] table = PiecePositionTable[(int)piece.PieceType-1];
-                mobilityScore += (piece.IsWhite ? 1 : -1) * (int)(table[piece.Square.Index] * 2.0);
+                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType-1][piece.IsWhite ? 63 - piece.Square.Index : piece.Square.Index]);
                 materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
             }
         }
-        return materialScore + mobilityScore;
+        return materialScore 
+            + positionScore
+            + (board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0) 
+            + (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
+            + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
+    }
+
+    private double BoardvalueWithMove(Board board, Move move) {
+        board.MakeMove(move);
+        var s = BoardValue(board);
+        board.UndoMove(move);
+        return s;
     }
 }
