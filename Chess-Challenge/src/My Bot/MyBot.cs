@@ -29,7 +29,7 @@ public class MyBot : IChessBot
         {
             pieceCount += (int)(board.AllPiecesBitboard >> i) & 1;
         }*/
-        var depth = 4;
+        var depth = 3;
         var moves = board.GetLegalMoves();
         var move = moves[new Random().Next(moves.Length)];
         System.Console.WriteLine("Fallback: " + move);
