@@ -1,78 +1,95 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Numerics;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private int[] PieceTypeToValue = new int[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    // int[] pieceValues = { 0, 1, 3, 3, 5, 9, 20 };
+    int[] pieceValues = { 0, 100, 300, 300, 500, 900, 10000 };
 
-    private double[][] PiecePositionTable = new double[][]{
-        // Pawn
-        new double[]{0, 0, 0, 0, 0, 0, 0, 0,5, 5, 5, 5, 5, 5, 5, 5,1, 1, 2, 3, 3, 2, 1, 1,.5, .5, 1, 2.5, 2.5, 1, .5, .5,0, 0, 0, 2, 2, 0, 0, 0,.5, .5, -1, 0, 0, -1, -.5, .5,.5, 1, 1, 2, 2, 1, 1, .5,0, 0, 0, 0, 0, 0, 0, 0},
-        // Knight
-        new double[]{-5, 4, 3, 3, 3, 3, 4, -5,-4, 2, 0, 0, 0, 0, 2, -4,-3, 0, 1, 1.5, 1.5, 1, 0, -3,-3, .5, 1.5, 2, 2, 1.5, .5, -3,-3, 0, 1.5, 2, 2, 1.5, 0, -3,-3, .5, 1, 1.5, 1.5, 1, .5, -3,-4, 2, 0, .5, .5, 0, -2, -4,-5, 4, 3, 3, 3, 3, 4, -5},
-        // Bishop
-        new double[]{ -2, -1, -1, -1, -1, -1, -1, -2, -1, 0, 0, 0, 0, 0, 0, 1, -1, 0, .5, 1, 1, .5, 0, 1, -1, .5, .5, 1, 1, .5, .5, 1, -1, 0, 1, 1, 1, 1, 0, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, .5, 0, 0, 0, 0, .5, -1, -2, -1, -1, -1, -1, -1, -1, -2},
-        // Rook
-        new double[]{ 0, 0, 0, 0, 0, 0, 0, 0, .5, 1, 1, 1, 1, 1, 1, .5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5,-.5, 0, 0, 0, 0, 0, 0, -.5, 0, 0, 0, .5, .5, 0, 0, 0},
-        // Queen
-        new double[]{ -2, -1, 1, .5, -.5, -1, -1, -2,-1, 0, 0, 0, 0, 0, 0, 1,-1, 0, .5, .5, .5, .5, 0, 1,-.5, 0, .5, .5, .5, .5, 0, -.5, 0, 0, .5, .5, .5, .5, 0, -.5,-1, .5, .5, .5, .5, .5, 0, 1,-1, 0, .5, 0, 0, 0, 0, 1, -2, -1, -1, -.5, .5, -1, 1, -2},
-        // King
-        new double[]{ -3, 4, 4, 5, -5, -4, -4, -3, -3, 4, 4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, 4, 4, -3, -3, 4, -4, -5, -5, -4, 4, -3, -2, -3, -3, -4, -4, -3, -3, -2,-1, 2, -2, -2, -2, -2, -2, 1, 2, 2, 0, 0, 0, 0, 2, 2 , 2, 3, 1, 0, 0, 1, 3, 2},
-    };
+    public void ExtractValues(ulong pack) {
+        byte[] vals = new byte[64*64];
+        byte first = 0;
+        var x = pack << 56;
+        
+        var first2 = (ulong) first | x;
+    }
 
     public Move Think(Board board, Timer timer)
     {
-        var depth = 4;
-        var random = new Random();
-        var moves = board.GetLegalMoves();
-        var move = moves[random.Next(moves.Length)];
-        return Minimax(board, move, 0, depth, board.IsWhiteToMove).Item1;
+        Move[] moves = board.GetLegalMoves();
+        // Console.WriteLine(BoardValue(board), true);
+
+        ulong[] bestValue = { 
+            
+            6143424123412342134, 314324123412342134, 314324123412342134, 
+            314324123412342134, 314324123412342134, 314324123412342134, 
+            314324123412342134, 314324123412342134, 314324123412342134, 
+            314324123412342134, 314324123412342134, 314324123412342134, 
+            314324123412342134, 314324123412342134, 314324123412342134 
+        };
+        
+        Move? bestMove = null;
+    
+        MiniMax(board, 4, 0, ref bestMove, board.IsWhiteToMove);
+        return bestMove??moves[0];
     }
 
-    private (Move, int) Minimax(Board board, Move lastMove, int lastValue, int depth, bool isMax) {
-        // Depth check
-        if (depth == 0) return (lastMove, BoardValue(board));
-
-        Move[] legalMoves = board.GetLegalMoves();
-        (Move, int) bestMove = (lastMove, isMax ? int.MinValue : int.MaxValue);
-
-        foreach (Move legalMove in legalMoves) 
-        {
-            board.MakeMove(legalMove);
-            // a-b pruning
-            if ( !( ( isMax && BoardValue(board) >= lastValue ) || ( !isMax && BoardValue(board) <= lastValue ) ) ) 
-            {
-                board.UndoMove(legalMove);
-                continue;
-            }
-
-            var next = Minimax(board, legalMove, BoardValue(board), depth-1, !isMax);
-            if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
-            {
-                bestMove = (legalMove, next.Item2);
-            }
-
-            board.UndoMove(legalMove);
-        }
-
-        return bestMove;
-    }
-
-    /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private int BoardValue(Board board) 
+    public int MiniMax(Board board, int depth, int currentDepth, ref Move? bestMove, bool isMax)
     {
-        int materialScore = 0;
-        int mobilityScore = 0;
-        foreach (var list in board.GetAllPieceLists()) 
+        if (currentDepth == depth)
         {
-            foreach (var piece in list) 
+            return BoardValue(board);
+        }
+        if (isMax) {
+            int value = int.MinValue;
+            foreach (Move move in board.GetLegalMoves())
             {
-                double[] table = PiecePositionTable[(int)piece.PieceType-1];
-                mobilityScore += (piece.IsWhite ? 1 : -1) * (int)(table[piece.Square.Index] * 2.0);
-                materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
+                board.MakeMove(move);
+                int score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax);
+                if (score > value) 
+                {
+                    value = score;
+                    if (currentDepth == 0) 
+                    {
+                        bestMove = move;
+                    }
+                        
+                }
+                board.UndoMove(move);
+            }
+            return value;
+        } else {
+            int value = int.MaxValue;
+            foreach (Move move in board.GetLegalMoves())
+            {
+                board.MakeMove(move);
+                int score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax);
+                if (score < value) 
+                {
+                    value = score;
+                    if (currentDepth == 0) 
+                    {
+                        bestMove = move;
+                    }
+                }
+                board.UndoMove(move);
+            }
+            return value;
+        }
+    }
+
+    public int BoardValue(Board board)
+    {
+        int value = 0;
+        foreach (PieceList pieceList in board.GetAllPieceLists())
+        {
+            foreach (Piece piece in pieceList)
+            {
+                value += pieceValues[(int)piece.PieceType] * (piece.IsWhite ? 1 : -1);
             }
         }
-        return materialScore + mobilityScore;
+        return value;
     }
+
 }
