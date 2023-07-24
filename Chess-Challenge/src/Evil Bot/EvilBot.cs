@@ -32,6 +32,7 @@ namespace ChessChallenge.Example
                 SlowMover = 10,
                 MoveOverhead = 0,
                 MultiPV = 1,
+                SlowMover = 10,
             });
         }
 
