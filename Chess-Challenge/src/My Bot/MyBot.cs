@@ -33,7 +33,7 @@ public class MyBot : IChessBot
 {
     private int[] PieceTypeToValue = new int[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
-    private static String jsonParams = System.IO.File.ReadAllText("src/My Bot/params_400k_100000.json");
+    private static String jsonParams = System.IO.File.ReadAllText("src/My Bot/params.json");
     
     // deserialize json_params into Param list
     private IList<Param>? wandb = System.Text.Json.JsonSerializer.Deserialize<IList<Param>>(jsonParams);
@@ -48,40 +48,56 @@ public class MyBot : IChessBot
         Console.WriteLine(BoardValue(board, wandb));
         // Console.WriteLine(res.ToString());
         // Console.WriteLine(json_params);
-        var depth = 3;
-        var random = new Random();
-        var moves = board.GetLegalMoves();
-        var move = moves[random.Next(moves.Length)];
-        return Minimax(board, move, 0, depth, board.IsWhiteToMove, wandb).Item1;
+
+        Move? bestMove = null;
+        Move[] moves = board.GetLegalMoves();
+
+        MiniMax(board, 3, 0, ref bestMove, board.IsWhiteToMove, wandb);
+        return bestMove??moves[0];
     }
 
-        private (Move, float) Minimax(Board board, Move lastMove, float lastValue, int depth, bool isMax, IList<Param> wand) {
-        // Depth check
-        if (depth == 0) return (lastMove, BoardValue(board, wandb));
-
-        Move[] legalMoves = board.GetLegalMoves();
-        (Move, float) bestMove = (lastMove, lastValue);
-
-        foreach (Move legalMove in legalMoves) 
+        public float MiniMax(Board board, int depth, int currentDepth, ref Move? bestMove, bool isMax, IList<Param> wandb)
+    {
+        if (currentDepth == depth)
         {
-            board.MakeMove(legalMove);
-            // a-b pruning
-            if ( !( ( isMax && BoardValue(board, wandb) > lastValue ) || ( !isMax && BoardValue(board, wandb) < lastValue ) ) ) 
-            {
-                board.UndoMove(legalMove);
-                continue;
-            }
-
-            var next = Minimax(board, legalMove, BoardValue(board, wandb), depth-1, !isMax, wandb);
-            if ( ( isMax && next.Item2 > bestMove.Item2 ) || ( !isMax && next.Item2 < bestMove.Item2 ) ) 
-            {
-                bestMove = (legalMove, next.Item2);
-            }
-
-            board.UndoMove(legalMove);
+            return BoardValue(board, wandb);
         }
-
-        return bestMove;
+        if (isMax) {
+            float value = float.NegativeInfinity;
+            foreach (Move move in board.GetLegalMoves())
+            {
+                board.MakeMove(move);
+                float score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax, wandb);
+                if (score > value) 
+                {
+                    value = score;
+                    if (currentDepth == 0) 
+                    {
+                        bestMove = move;
+                    }
+                        
+                }
+                board.UndoMove(move);
+            }
+            return value;
+        } else {
+            float value = float.PositiveInfinity;
+            foreach (Move move in board.GetLegalMoves())
+            {
+                board.MakeMove(move);
+                float score = MiniMax(board, depth, currentDepth + 1, ref bestMove, !isMax, wandb);
+                if (score < value) 
+                {
+                    value = score;
+                    if (currentDepth == 0) 
+                    {
+                        bestMove = move;
+                    }
+                }
+                board.UndoMove(move);
+            }
+            return value;
+        }
     }
 
     private void ConvertChar(char c, ref IList<float> neuralInput) {
