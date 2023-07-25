@@ -25,11 +25,12 @@ namespace ChessChallenge.Example
                 (true, false) => GetResourcePath("Stockfish", "avx2", "windows", "stockfish-windows-x86-64-avx2"),
                 (false, false) => GetResourcePath("Stockfish", "popcnt", "windows", "stockfish-windows-x86-64-modern"),
             };
-            stockfish = new Stockfish(path, depth: 16, settings: new Stockfish.Settings
+            stockfish = new Stockfish(path, depth: 4, settings: new Stockfish.Settings
             {
-                Threads = 12,
-                Elo = 1200,
+                Threads = 4,
                 SlowMover = 10,
+                //SkillLevel = 8,
+                Elo = 1000,
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
@@ -177,6 +178,7 @@ namespace ChessChallenge.Example
                 public bool Ponder { get; set; }
                 public int MultiPV { get; set; }
                 public int Elo { get; set; }
+                public int SkillLevel { get; set; }
                 public int MoveOverhead { get; set; }
                 public int SlowMover { get; set; }
                 public bool UCIChess960 { get; set; }
@@ -186,7 +188,8 @@ namespace ChessChallenge.Example
                     int threads = 0,
                     bool ponder = false,
                     int multiPV = 1,
-                    int elo = 1200,
+                    int elo = 0,
+                    int skillLevel = 8,
                     int moveOverhead = 30,
                     int slowMover = 80,
                     bool uciChess960 = false
@@ -197,6 +200,7 @@ namespace ChessChallenge.Example
                     Threads = threads;
                     MultiPV = multiPV;
                     Elo = elo;
+                    SkillLevel = skillLevel;
                     MoveOverhead = moveOverhead;
                     SlowMover = slowMover;
                     UCIChess960 = uciChess960;
@@ -210,8 +214,9 @@ namespace ChessChallenge.Example
                         ["Threads"] = Threads.ToString(),
                         ["Ponder"] = Ponder.ToString(),
                         ["MultiPV"] = MultiPV.ToString(),
-                        ["UCI_LimitStrength"] = "true",
+                        ["UCI_LimitStrength"] = Elo == 0 ? "false" : "true",
                         ["UCI_Elo"] = Elo.ToString(),
+                        ["Skill level"] = SkillLevel.ToString(),
                         ["Move Overhead"] = MoveOverhead.ToString(),
                         ["Slow Mover"] = SlowMover.ToString(),
                         ["UCI_Chess960"] = UCIChess960.ToString(),

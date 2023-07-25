@@ -1,12 +1,15 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private double[] PieceTypeToValue = new double[] { 0, 100, 300, 300, 500, 900, 10000 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static readonly double[] PieceTypeToValue = { 0, 100, 300, 300, 500, 900, 10000 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
-    private double[][] PiecePositionTable = new double[][]{
+    private static double[][] PiecePositionTable = new double[][]{
         // Pawn
         mirror(new double[]
         {
@@ -83,44 +86,64 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        var depth = 4;
-        var moves = board.GetLegalMoves();
-        var move = moves[new Random().Next(moves.Length)];
-        var chosen = Minimax(board, move, BoardvalueWithMove(board, move), depth, board.IsWhiteToMove);
-        return chosen.Item1;
+        var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 8, board.IsWhiteToMove).Item1;
+        return move;
     }
 
-    private (Move, double) Minimax(Board board, Move lastMove, double lastValue, int depth, bool isMax)
+    /// <summary> AlphaNegamax </summary>
+    private (Move, double) Search(Board board, double alpha, double beta, int depth, int extensions, bool isWhite)
     {
         // Depth check
-        if (depth == 0) return (lastMove, BoardValue(board));
+        if (depth == 0 || board.IsInCheckmate() || board.IsDraw()) return (Move.NullMove, Quiescence(board, alpha, beta, isWhite, extensions));
 
-        (Move, double) bestMove = (lastMove, isMax ? double.MinValue : double.MaxValue);
+        (Move, double) bestValue = (Move.NullMove, double.NegativeInfinity);
 
         foreach (Move legalMove in board.GetLegalMoves())
         {
             board.MakeMove(legalMove);
-            // a-b pruning
-            if (!((isMax && BoardValue(board) >= lastValue) || (!isMax && BoardValue(board) <= lastValue)))
+
+            var score = -Search(board, -beta, -alpha, depth - 1, extensions, !isWhite).Item2;
+            if (score >= beta)
             {
+                bestValue = (legalMove, score);
                 board.UndoMove(legalMove);
-                continue;
+                return bestValue;
             }
-
-            var next = Minimax(board, legalMove, BoardValue(board), depth - 1, !isMax);
-            if ((isMax && next.Item2 > bestMove.Item2) || (!isMax && next.Item2 < bestMove.Item2))
+            if (score > bestValue.Item2)
             {
-                bestMove = (legalMove, next.Item2);
+                bestValue = (legalMove, score);
+                if (score > alpha)
+                {
+                    alpha = score;
+                }
             }
-
             board.UndoMove(legalMove);
         }
 
-        return bestMove;
+        return bestValue;
+    }
+
+    private double Quiescence(Board board, double alpha, double beta, bool isWhite, int depth)
+    {
+        var standPat = Evaluate(board) * (isWhite ? 1 : -1);
+        if (standPat >= beta) return beta;
+        if (alpha < standPat) alpha = standPat;
+
+        if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
+            {
+                board.MakeMove(capture);
+                var score = -Quiescence(board, -beta, -alpha, isWhite, depth - 1);
+                board.UndoMove(capture);
+
+                if (score >= beta) return beta;
+                if (score > alpha) alpha = score;
+            }
+
+        return alpha;
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private double BoardValue(Board board)
+    private static double Evaluate(Board board, bool excludePawns = false, bool excludePosition = false, bool? justWhite = null)
     {
         double materialScore = 0;
         double positionScore = 0;
@@ -128,24 +151,33 @@ public class MyBot : IChessBot
         {
             foreach (var piece in list)
             {
-                positionScore += (piece.IsWhite ? 1 : -1) * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]);
-                materialScore += (piece.IsWhite ? 1 : -1) * PieceTypeToValue[(int)piece.PieceType];
+                double multiplier = (piece.IsWhite, justWhite) switch
+                {
+                    (true, null) => 1,
+                    (true, true) => 1,
+                    (false, null) => -1,
+                    (false, false) => -1,
+                    _ => 0,
+                };
+                if (excludePawns && piece.IsPawn) continue;
+                materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
+                if (excludePosition) continue;
+                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]);
             }
         }
         return materialScore
             + positionScore
-            + (board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0)
-            + (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
-            + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
+            + (!excludePosition && board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0)
+            //+ (!excludePosition && board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
+            + (!excludePosition && board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
     }
 
-    private double BoardvalueWithMove(Board board, Move move)
+    /// <summary> Material Thre </summary>
+    private static readonly double EndgameMaterialStart = PieceTypeToValue[4] * 2 + PieceTypeToValue[3] + PieceTypeToValue[2];
+    /*private static double EndgameWeight(Board board, bool white)
     {
-        board.MakeMove(move);
-        var s = BoardValue(board);
-        board.UndoMove(move);
-        return s;
-    }
+
+    }*/
 
     private static double[] mirror(double[] half)
     {
