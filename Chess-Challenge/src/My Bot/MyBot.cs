@@ -6,7 +6,7 @@ using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private static readonly double[] PieceTypeToValue = { 0, 100, 300, 300, 500, 900, 10000 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
     private static double[][] PiecePositionTable = new double[][]{
@@ -86,7 +86,7 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 8, board.IsWhiteToMove).Item1;
+        var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
         return move;
     }
 
@@ -125,21 +125,20 @@ public class MyBot : IChessBot
 
     private double Quiescence(Board board, double alpha, double beta, bool isWhite, int depth)
     {
-        var standPat = Evaluate(board) * (isWhite ? 1 : -1);
-        if (standPat >= beta) return beta;
-        if (alpha < standPat) alpha = standPat;
+        var best = Evaluate(board) * (isWhite ? 1 : -1);
+        if (best >= beta) return beta;
 
         if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
             {
                 board.MakeMove(capture);
-                var score = -Quiescence(board, -beta, -alpha, isWhite, depth - 1);
+                var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
                 board.UndoMove(capture);
+                best = Math.Max(score, best);
 
-                if (score >= beta) return beta;
-                if (score > alpha) alpha = score;
+                if (best >= beta) return best;
             }
 
-        return alpha;
+        return best;
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
@@ -167,17 +166,10 @@ public class MyBot : IChessBot
         }
         return materialScore
             + positionScore
-            + (!excludePosition && board.IsInCheckmate() ? (board.IsWhiteToMove ? -1 : 1) * 10000000 : 0)
+            + (!excludePosition && board.IsInCheckmate() ? (board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity) : 0)
             //+ (!excludePosition && board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
-            + (!excludePosition && board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -100000 : 0);
+            + (!excludePosition && board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0);
     }
-
-    /// <summary> Material Thre </summary>
-    private static readonly double EndgameMaterialStart = PieceTypeToValue[4] * 2 + PieceTypeToValue[3] + PieceTypeToValue[2];
-    /*private static double EndgameWeight(Board board, bool white)
-    {
-
-    }*/
 
     private static double[] mirror(double[] half)
     {

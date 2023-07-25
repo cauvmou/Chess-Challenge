@@ -34,6 +34,7 @@ namespace ChessChallenge.Example
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
+            stockfish.StartNewGame();
         }
 
         public static string GetResourcePath(params string[] localPath)
@@ -115,7 +116,7 @@ namespace ChessChallenge.Example
                 Send($"setoption name {name} value {value}");
             }
 
-            private void StartNewGame()
+            public void StartNewGame()
             {
                 Send("ucinewgame");
                 if (!IsReady())
@@ -126,7 +127,6 @@ namespace ChessChallenge.Example
 
             public void SetFenPosition(string fenPosition)
             {
-                StartNewGame();
                 Send($"position fen {fenPosition}");
             }
 
