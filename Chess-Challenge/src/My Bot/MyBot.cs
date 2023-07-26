@@ -33,89 +33,92 @@ public class MyBot : IChessBot
     private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
-    private static double[][] PiecePositionTable = new double[][]{
+    private static int[][] PiecePositionTable = new int[][]{
         // Pawn
-        mirror(new double[]
-        {
-            2,   2,   2,   2,
-            2.5,  3,   3,   0,
-            2.5,  2,   1,   2,
-            2,   2,   3, 6.5,
-            2.5, 2.5,  4,   7,
-            3,   3,   6,   7,
-            9,   9,   9,   9,
-            2,   2,   2,   2,
-        }),
-        // Knight
-        mirror(new double[]
-        {
-            0,   1,   2,   2,
-            1,   3,   6,   7,
-            2,   6,   8,   9,
-            2,   7,   9,  10,
-            2,   7,   9,  10,
-            2,   6,   8,   9,
-            1,   3,   6,   7,
-            0,   1,   2,   2
-        }),
-        // Bishop
-        mirror(new double[]
-        {
-            4,   2,   2,   2,
-            2,  6.5,  5,   5,
-            2,   7,  6.5, 6.5,
-            2,  5.5,  8.5,  7,
-            2,   6,   6,   7,
-            2,   5,   6,   7,
-            2,   5,   5,   5,
-            0,   2,   2,   2
-        }),
-        // Rook
-        mirror(new double[]
-        {
-            3,   3,   5,   6,
-            0,   3,   3,   3,
-            0,   3,   3,   3,
-            0,   3,   3,   3,
-            0,   3,   3,   3,
-            0,   3,   3,   3,
-            6.5,   9,   9,   9,
-            5.5,  5.5,  5.5,  5.5
-        }),
-        // Queen
-        mirror(new double[]
-        {
-            1,   3,   3,   4,
-            3,   6,   7,   8,
-            3,   7,   9,  10,
-            4,   8,  10,  10,
-            4,   8,  10,  10,
-            3,   7,   9,  10,
-            3,   6,   7,   8,
-            1,   3,   3,   4
-        }),
-        // King
-        new double[]
-        {
-             6,   6,   7,   5,   5,   5,   7,   6
-        }.Concat(mirror(new double[]
-        {
-             6, 5.5, 4.5, 4.5,
-             5,   4,   4,   4,
-             3,   3,   3,   1,
-             3,   2,   2,   0,
-             3,   2,   2,   0,
-             2,   1,   1,   0,
-             2,   1,   1,   0,
-             5,   5,   5,   5,  // TODO: trim this?
-        })).ToArray()
+    mirror(new []
+    {
+        4,   4,   4,   4,
+        5,   6,   6,   0,
+        5,   4,   2,   4,
+        4,   4,   6,  13,
+        5,   5,   8,  14,
+        6,   6,  12,  14,
+       18,  18,  18,  18,
+        4,   4,   4,   4,
+    }),
+    // Knight
+    mirror(new []
+    {
+        0,   2,   4,   4,
+        2,   6,  12,  14,
+        4,  12,  16,  18,
+        4,  14,  18,  20,
+        4,  14,  18,  20,
+        4,  12,  16,  18,
+        2,   6,  12,  14,
+        0,   2,   4,   4
+    }),
+    // Bishop
+    mirror(new []
+    {
+        8,   4,   4,   4,
+        4,  13,  10,  10,
+        4,  14,  13,  13,
+        4,  11,  17,  14,
+        4,  12,  12,  14,
+        4,  10,  12,  14,
+        4,  10,  10,  10,
+        0,   4,   4,   4
+    }),
+    // Rook
+    mirror(new []
+    {
+        6,   6,  10,  12,
+        0,   6,   6,   6,
+        0,   6,   6,   6,
+        0,   6,   6,   6,
+        0,   6,   6,   6,
+        0,   6,   6,   6,
+       13,  18,  18,  18,
+       11,  11,  11,  11
+    }),
+    // Queen
+    mirror(new []
+    {
+        2,   6,   6,   8,
+        6,  12,  14,  16,
+        6,  14,  18,  20,
+        8,  16,  20,  20,
+        8,  16,  20,  20,
+        6,  14,  18,  20,
+        6,  12,  14,  16,
+        2,   6,   6,   8
+    }),
+    // King
+    new []
+    {
+         12,  12,  14,  10,  10,  10,  14,  12
+    }.Concat(mirror(new []
+    {
+       12,  11,   9,   9,
+       10,   8,   8,   8,
+        6,   6,   6,   2,
+        6,   4,   4,   0,
+        6,   4,   4,   0,
+        4,   2,   2,   0,
+        4,   2,   2,   0,
+       10,  10,  10,  10,  // TODO: trim this?
+    })).ToArray()
     };
+
+    private int depth = 4;
 
     public Move Think(Board board, Timer timer)
     {
         System.Console.WriteLine($"TableSize: {TranspositionTable.Count}");
+        // depthIncreaseCheck(board);
         var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
-        return move.IsNull ? board.GetLegalMoves()[new Random().Next(board.GetLegalMoves().Length)] : move;
+        return move;
     }
 
     /// <summary> AlphaNegamax </summary>
@@ -156,10 +159,7 @@ public class MyBot : IChessBot
             if (score > bestValue.Item2)
             {
                 bestValue = (legalMove, score);
-                if (score > alpha)
-                {
-                    alpha = score;
-                }
+                if (score > alpha) alpha = score;
             }
             board.UndoMove(legalMove);
         }
@@ -201,7 +201,7 @@ public class MyBot : IChessBot
             {
                 double multiplier = piece.IsWhite ? 1 : -1;
                 materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
-                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] - 5);
+                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] / 2 - 5);
             }
         }
         return materialScore
@@ -211,9 +211,9 @@ public class MyBot : IChessBot
             + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0.0);
     }
 
-    private static double[] mirror(double[] half)
+    private static int[] mirror(int[] half)
     {
-        var ret = new double[64];
+        var ret = new int[64];
 
         for (int i = 0; i < 32; i += 4)
         {
@@ -224,4 +224,16 @@ public class MyBot : IChessBot
 
         return ret;
     }
+
+    // delete this if bot is slow AND stupid 
+    // HE WAS!
+    // public void depthIncreaseCheck(Board board)
+    // {
+    //     depth = (board.GetLegalMoves().Length) switch
+    //     {
+    //         > 20 => 4,
+    //         > 10 => 5,
+    //         <= 10 => 6
+    //     };
+    // }
 }
