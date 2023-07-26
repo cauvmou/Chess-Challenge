@@ -50,7 +50,7 @@ public class MyBot : IChessBot
         // Console.WriteLine(res.ToString());
         // Console.WriteLine(json_params);
 
-        var depth = 3;
+        var depth = 4;
 
         var moves = board.GetLegalMoves();
         var move = moves[new Random().Next(moves.Length)];
