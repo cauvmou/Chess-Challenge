@@ -87,7 +87,7 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
-        return move;
+        return move.IsNull ? board.GetLegalMoves()[new Random().Next(board.GetLegalMoves().Length)] : move;
     }
 
     /// <summary> AlphaNegamax </summary>

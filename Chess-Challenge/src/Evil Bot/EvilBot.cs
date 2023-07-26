@@ -27,10 +27,11 @@ namespace ChessChallenge.Example
             };
             stockfish = new Stockfish(path, depth: 4, settings: new Stockfish.Settings
             {
-                Threads = 4,
+                Threads = 8,
+                Ponder = true,
                 SlowMover = 10,
                 //SkillLevel = 8,
-                Elo = 1000,
+                Elo = 1400,
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
@@ -71,6 +72,8 @@ namespace ChessChallenge.Example
 
         public Move Think(Board board, Timer timer)
         {
+            (int, int) time = board.IsWhiteToMove ? (timer.MillisecondsRemaining, timer.OpponentMillisecondsRemaining) : (timer.OpponentMillisecondsRemaining, timer.MillisecondsRemaining);
+            stockfish.SetTimers(time.Item1, time.Item2);
             stockfish.SetFenPosition(board.GetFenString());
             return new Move(stockfish.GetBestMoveTime(), board);
         }
@@ -128,6 +131,12 @@ namespace ChessChallenge.Example
             public void SetFenPosition(string fenPosition)
             {
                 Send($"position fen {fenPosition}");
+            }
+
+            internal void SetTimers(int wtime, int btime)
+            {
+                Send($"wtime {wtime}");
+                Send($"btime {btime}");
             }
 
             public string GetBestMoveTime(int time = 1000)
