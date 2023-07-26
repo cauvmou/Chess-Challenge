@@ -1,10 +1,36 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private static double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+
+    enum NodeBound
+    {
+        Upper,
+        Lower,
+    }
+
+    class TranspositionTableEntry
+    {
+        public Move move;
+        public int depth;
+        public double value;
+        public NodeBound? bound;
+
+        public TranspositionTableEntry(Move move, int depth, double value, NodeBound? bound = null)
+        {
+            this.move = move;
+            this.depth = depth;
+            this.value = value;
+            this.bound = bound;
+        }
+    }
+
+    private Dictionary<ulong, TranspositionTableEntry> TranspositionTable = new Dictionary<ulong, TranspositionTableEntry>();
+
+    private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
     private static double[][] PiecePositionTable = new double[][]{
@@ -94,6 +120,20 @@ public class MyBot : IChessBot
     /// <summary> AlphaNegamax </summary>
     private (Move, double) Search(Board board, double alpha, double beta, int depth, int extensions, bool isWhite)
     {
+        var alphaCopy = alpha;
+        if (TranspositionTable.ContainsKey(board.ZobristKey))
+        {
+            var entry = TranspositionTable.GetValueOrDefault(board.ZobristKey);
+            if (entry.depth >= depth)
+            {
+                if (entry.bound == null) return (entry.move, entry.value);
+                else if (entry.bound == NodeBound.Lower) alpha = Math.Max(alpha, entry.value);
+                else if (entry.bound == NodeBound.Upper) beta = Math.Min(beta, entry.value);
+
+                if (alpha >= beta) return (entry.move, entry.value);
+            }
+        }
+
         var moves = board.GetLegalMoves();
 
         // Depth check
@@ -110,7 +150,7 @@ public class MyBot : IChessBot
             {
                 bestValue = (legalMove, score);
                 board.UndoMove(legalMove);
-                return bestValue;
+                break;
             }
             if (score > bestValue.Item2)
             {
@@ -123,6 +163,11 @@ public class MyBot : IChessBot
             board.UndoMove(legalMove);
         }
 
+        var value = bestValue.Item2;
+        var tableEntry = new TranspositionTableEntry(bestValue.Item1, depth, bestValue.Item2, value <= alphaCopy ? NodeBound.Upper : value >= beta ? NodeBound.Lower : null);
+        if (TranspositionTable.ContainsKey(board.ZobristKey)) TranspositionTable[board.ZobristKey] = tableEntry;
+        else TranspositionTable.Add(board.ZobristKey, tableEntry);
+
         return bestValue;
     }
 
@@ -132,14 +177,14 @@ public class MyBot : IChessBot
         if (best >= beta) return beta;
 
         if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
-        {
-            board.MakeMove(capture);
-            var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
-            board.UndoMove(capture);
-            best = Math.Max(score, best);
+            {
+                board.MakeMove(capture);
+                var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
+                board.UndoMove(capture);
+                best = Math.Max(score, best);
 
-            if (best >= beta) return best;
-        }
+                if (best >= beta) return best;
+            }
 
         return best;
     }
@@ -163,7 +208,7 @@ public class MyBot : IChessBot
                 if (excludePawns && piece.IsPawn) continue;
                 materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
                 if (excludePosition) continue;
-                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]-5);
+                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] - 5);
             }
         }
         return materialScore
