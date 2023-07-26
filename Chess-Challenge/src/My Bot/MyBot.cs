@@ -113,6 +113,7 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
+        System.Console.WriteLine($"TableSize: {TranspositionTable.Count}");
         var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
         return move.IsNull ? board.GetLegalMoves()[new Random().Next(board.GetLegalMoves().Length)] : move;
     }
@@ -183,14 +184,14 @@ public class MyBot : IChessBot
                 board.UndoMove(capture);
                 best = Math.Max(score, best);
 
-                if (best >= beta) return best;
+                if (best >= beta) break;
             }
 
         return best;
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private static double Evaluate(Board board, bool excludePawns = false, bool excludePosition = false, bool? justWhite = null)
+    private static double Evaluate(Board board)
     {
         double materialScore = 0;
         double positionScore = 0;
@@ -198,24 +199,16 @@ public class MyBot : IChessBot
         {
             foreach (var piece in list)
             {
-                double multiplier = (piece.IsWhite, justWhite) switch
-                {
-                    (false, true) => 0,
-                    (true, false) => 0,
-                    (true, _) => 1,
-                    (false, _) => -1,
-                };
-                if (excludePawns && piece.IsPawn) continue;
+                double multiplier = piece.IsWhite ? 1 : -1;
                 materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
-                if (excludePosition) continue;
                 positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] - 5);
             }
         }
         return materialScore
             + positionScore
-            + (!excludePosition && board.IsInCheckmate() ? (board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity) : 0)
-            //+ (!excludePosition && board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
-            + (!excludePosition && board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0);
+            + (board.IsInCheckmate() ? board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity : 0.0)
+            //+ (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
+            + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0.0);
     }
 
     private static double[] mirror(double[] half)

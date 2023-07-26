@@ -30,7 +30,7 @@ namespace ChessChallenge.Example
                 Threads = 8,
                 SlowMover = 10,
                 //SkillLevel = 8,
-                Elo = 1200,
+                Elo = 1300,
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
