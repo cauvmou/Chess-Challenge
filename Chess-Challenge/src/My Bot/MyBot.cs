@@ -33,6 +33,8 @@ public class MyBot : IChessBot
 {
     private int[] PieceTypeToValue = new int[] {0, 100, 300, 300, 500, 900, 10000}; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
+    private static String thingy = """aklsdjfklji43p9jfiuajsdklfjaklsdfiu43h8qjaiodfjlköasjgklajoifpa3ji9fjuaiofjlaksjfioapweji9ajsdiofjaklsjfioaweasdfjaksldfjklöasdjföklasjdklföjasklfjlkadsöjfklaösjfklöasjdköfljasköldfjakölsjföklasdjklöasdjföklasjdklföjasklfjlkadsöjfklaösjfklöasjdköfljasköldfjakölsjföklasd""";
+
     private static String jsonParams = System.IO.File.ReadAllText("src/My Bot/params.json");
     
     // deserialize json_params into Param list
