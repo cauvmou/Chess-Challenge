@@ -28,10 +28,9 @@ namespace ChessChallenge.Example
             stockfish = new Stockfish(path, depth: 4, settings: new Stockfish.Settings
             {
                 Threads = 8,
-                Ponder = true,
                 SlowMover = 10,
                 //SkillLevel = 8,
-                Elo = 1400,
+                Elo = 1200,
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
@@ -73,9 +72,8 @@ namespace ChessChallenge.Example
         public Move Think(Board board, Timer timer)
         {
             (int, int) time = board.IsWhiteToMove ? (timer.MillisecondsRemaining, timer.OpponentMillisecondsRemaining) : (timer.OpponentMillisecondsRemaining, timer.MillisecondsRemaining);
-            stockfish.SetTimers(time.Item1, time.Item2);
             stockfish.SetFenPosition(board.GetFenString());
-            return new Move(stockfish.GetBestMoveTime(), board);
+            return new Move(stockfish.GetBestMoveTime(time.Item1, time.Item2, 300), board);
         }
 
         private class Stockfish
@@ -133,15 +131,9 @@ namespace ChessChallenge.Example
                 Send($"position fen {fenPosition}");
             }
 
-            internal void SetTimers(int wtime, int btime)
+            public string GetBestMoveTime(int wtime, int btime, int estimate)
             {
-                Send($"wtime {wtime}");
-                Send($"btime {btime}");
-            }
-
-            public string GetBestMoveTime(int time = 1000)
-            {
-                GoTime(time);
+                GoTime(wtime, btime, estimate);
                 var tries = 0;
                 while (true)
                 {
@@ -163,9 +155,9 @@ namespace ChessChallenge.Example
                 }
             }
 
-            private void GoTime(int time)
+            private void GoTime(int wtime, int btime, int estimate)
             {
-                Send($"go movetime {time}", estimatedTime: time + 100);
+                Send($"go wtime {wtime} btime {btime} winc 0 binc 0", estimatedTime: estimate + 100);
             }
 
             private void Send(string command, int estimatedTime = 100)
