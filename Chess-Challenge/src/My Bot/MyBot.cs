@@ -1,87 +1,88 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
     private static double[][] PiecePositionTable = new double[][]{
         // Pawn
         mirror(new double[]
         {
-            -3,  -3,  -3,  -3,
-          -2.5,  -2,  -2,  -5,
-          -2.5,  -3,  -4,  -3,
-            -3,  -3,  -2, 1.5,
-          -2.5,-2.5,  -1,   2,
-            -2,  -2,   1,   2,
-             4,   4,   4,   4,
-            -3,  -3,  -3,  -3,
+            2,   2,   2,   2,
+            2.5,  3,   3,   0,
+            2.5,  2,   1,   2,
+            2,   2,   3, 6.5,
+            2.5, 2.5,  4,   7,
+            3,   3,   6,   7,
+            9,   9,   9,   9,
+            2,   2,   2,   2,
         }),
         // Knight
         mirror(new double[]
         {
-            -5,  -4,  -3,  -3,
-            -4,  -2,   1,   2,
-            -3,   1,   3,   4,
-            -3,   2,   4,   5,
-            -3,   2,   4,   5,
-            -3,   1,   3,   4,
-            -4,  -2,   1,   2,
-            -5,  -4,  -3,  -3
+            0,   1,   2,   2,
+            1,   3,   6,   7,
+            2,   6,   8,   9,
+            2,   7,   9,  10,
+            2,   7,   9,  10,
+            2,   6,   8,   9,
+            1,   3,   6,   7,
+            0,   1,   2,   2
         }),
         // Bishop
         mirror(new double[]
         {
-            -1,  -3,  -3,  -3,
-            -3, 1.5,   0,   0,
-            -3,   2, 1.5, 1.5,
-            -3,  .5, 3.5,   2,
-            -3,   1,   1,   2,
-            -3,   0,   1,   2,
-            -3,   0,   0,   0,
-            -5,  -3,  -3,  -3
+            4,   2,   2,   2,
+            2,  6.5,  5,   5,
+            2,   7,  6.5, 6.5,
+            2,  5.5,  8.5,  7,
+            2,   6,   6,   7,
+            2,   5,   6,   7,
+            2,   5,   5,   5,
+            0,   2,   2,   2
         }),
         // Rook
         mirror(new double[]
         {
-            -2,  -2,   0,   1,
-            -5,  -2,  -2,  -2,
-            -5,  -2,  -2,  -2,
-            -5,  -2,  -2,  -2,
-            -5,  -2,  -2,  -2,
-            -5,  -2,  -2,  -2,
-           1.5,   4,   4,   4,
-            .5,  .5,  .5,  .5
+            3,   3,   5,   6,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            6.5,   9,   9,   9,
+            5.5,  5.5,  5.5,  5.5
         }),
         // Queen
         mirror(new double[]
         {
-            -4,  -2,  -2,  -1,
-            -2,   1,   2,   3,
-            -2,   2,   4,   5,
-            -1,   3,   5,   5,
-            -1,   3,   5,   5,
-            -2,   2,   4,   5,
-            -2,   1,   2,   3,
-            -4,  -2,  -2,  -1
+            1,   3,   3,   4,
+            3,   6,   7,   8,
+            3,   7,   9,  10,
+            4,   8,  10,  10,
+            4,   8,  10,  10,
+            3,   7,   9,  10,
+            3,   6,   7,   8,
+            1,   3,   3,   4
         }),
         // King
         new double[]
         {
-             1,   1,   2,   0,   0,   0,   2,   1,
-             1,  .5, -.5, -.5, -.5, -.5,  .5,   1,
-             0,  -1,  -1,  -1,  -1,  -1,  -1,   0,
-            -2,  -2,  -2,  -4,  -4,  -2,  -2,  -2,
-            -2,  -3,  -3,  -5,  -5,  -3,  -3,  -2,
-            -2,  -3,  -3,  -5,  -5,  -3,  -3,  -2,
-            -3,  -4,  -4,  -5,  -5,  -4,  -3,  -3,
-            -3,  -4,  -4,  -5,  -5,  -4,  -3,  -3
-        }
+             6,   6,   7,   5,   5,   5,   7,   6
+        }.Concat(mirror(new double[]
+        {
+             6, 5.5, 4.5, 4.5,
+             5,   4,   4,   4,
+             3,   3,   3,   1,
+             3,   2,   2,   0,
+             3,   2,   2,   0,
+             2,   1,   1,   0,
+             2,   1,   1,   0,
+             5,   5,   5,   5,  // TODO: trim this?
+        })).ToArray()
     };
 
     public Move Think(Board board, Timer timer)
@@ -93,12 +94,14 @@ public class MyBot : IChessBot
     /// <summary> AlphaNegamax </summary>
     private (Move, double) Search(Board board, double alpha, double beta, int depth, int extensions, bool isWhite)
     {
+        var moves = board.GetLegalMoves();
+
         // Depth check
         if (depth == 0 || board.IsInCheckmate() || board.IsDraw()) return (Move.NullMove, Quiescence(board, alpha, beta, isWhite, extensions));
 
-        (Move, double) bestValue = (Move.NullMove, double.NegativeInfinity);
+        (Move, double) bestValue = (moves[0], double.NegativeInfinity);
 
-        foreach (Move legalMove in board.GetLegalMoves())
+        foreach (Move legalMove in moves)
         {
             board.MakeMove(legalMove);
 
@@ -129,14 +132,14 @@ public class MyBot : IChessBot
         if (best >= beta) return beta;
 
         if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
-            {
-                board.MakeMove(capture);
-                var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
-                board.UndoMove(capture);
-                best = Math.Max(score, best);
+        {
+            board.MakeMove(capture);
+            var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
+            board.UndoMove(capture);
+            best = Math.Max(score, best);
 
-                if (best >= beta) return best;
-            }
+            if (best >= beta) return best;
+        }
 
         return best;
     }
@@ -152,16 +155,15 @@ public class MyBot : IChessBot
             {
                 double multiplier = (piece.IsWhite, justWhite) switch
                 {
-                    (true, null) => 1,
-                    (true, true) => 1,
-                    (false, null) => -1,
-                    (false, false) => -1,
-                    _ => 0,
+                    (false, true) => 0,
+                    (true, false) => 0,
+                    (true, _) => 1,
+                    (false, _) => -1,
                 };
                 if (excludePawns && piece.IsPawn) continue;
                 materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
                 if (excludePosition) continue;
-                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]);
+                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index]-5);
             }
         }
         return materialScore
