@@ -30,86 +30,27 @@ public class MyBot : IChessBot
 
     private Dictionary<ulong, TranspositionTableEntry> TranspositionTable = new Dictionary<ulong, TranspositionTableEntry>();
 
-    private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static readonly double[] PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // TODO: Mirroring / Compression?
-    private static int[][] PiecePositionTable = new int[][]{
+    // Holds ranks (ordered 7-0) that are ulongs in which there are the files (ordered 0-7) encoded.
+    private static ulong[][] PiecePositionTable = new ulong[][]{
         // Pawn
-    mirror(new []
-    {
-        4,   4,   4,   4,
-        5,   6,   6,   0,
-        5,   4,   2,   4,
-        4,   4,   6,  13,
-        5,   5,   8,  14,
-        6,   6,  12,  14,
-       18,  18,  18,  18,
-        4,   4,   4,   4,
-    }),
-    // Knight
-    mirror(new []
-    {
-        0,   2,   4,   4,
-        2,   6,  12,  14,
-        4,  12,  16,  18,
-        4,  14,  18,  20,
-        4,  14,  18,  20,
-        4,  12,  16,  18,
-        2,   6,  12,  14,
-        0,   2,   4,   4
-    }),
-    // Bishop
-    mirror(new []
-    {
-        8,   4,   4,   4,
-        4,  13,  10,  10,
-        4,  14,  13,  13,
-        4,  11,  17,  14,
-        4,  12,  12,  14,
-        4,  10,  12,  14,
-        4,  10,  10,  10,
-        0,   4,   4,   4
-    }),
-    // Rook
-    mirror(new []
-    {
-        6,   6,  10,  12,
-        0,   6,   6,   6,
-        0,   6,   6,   6,
-        0,   6,   6,   6,
-        0,   6,   6,   6,
-        0,   6,   6,   6,
-       13,  18,  18,  18,
-       11,  11,  11,  11
-    }),
-    // Queen
-    mirror(new []
-    {
-        2,   6,   6,   8,
-        6,  12,  14,  16,
-        6,  14,  18,  20,
-        8,  16,  20,  20,
-        8,  16,  20,  20,
-        6,  14,  18,  20,
-        6,  12,  14,  16,
-        2,   6,   6,   8
-    }),
-    // King
-    new []
-    {
-         12,  12,  14,  10,  10,  10,  14,  12
-    }.Concat(mirror(new []
-    {
-       12,  11,   9,   9,
-       10,   8,   8,   8,
-        6,   6,   6,   2,
-        6,   4,   4,   0,
-        6,   4,   4,   0,
-        4,   2,   2,   0,
-        4,   2,   2,   0,
-       10,  10,  10,  10,  // TODO: trim this?
-    })).ToArray()
+        new ulong[]{ 0x0, 0x1919191919191919, 0x5050a0f0f0a0505, 0x202050c0c050202, 0xa0a000000, 0x2fefb0000fbfe02, 0x20505f6f6050502, 0x0 },
+        // Knight
+        new ulong[]{ 0xe7ecf1f1f1f1ece7, 0xecf600000000f6ec, 0xf1000507070500f1, 0xf102070a0a0702f1, 0xf100070a0a0700f1, 0xf1020507070502f1, 0xecf600020200f6ec, 0xe7ecf1f1f1f1ece7 },
+        // Bishop
+        new ulong[]{ 0xf6fbfbfbfbfbfbf6, 0xfb000000000000fb, 0xfb000205050200fb, 0xfb020205050202fb, 0xfb000505050500fb, 0xfb050505050505fb, 0xfb020000000002fb, 0xf6fbfbfbfbfbfbf6 },
+        // Rook
+        new ulong[]{ 0x0, 0x205050505050502, 0xfe000000000000fe, 0xfe000000000000fe, 0xfe000000000000fe, 0xfe000000000000fe, 0xfe000000000000fe, 0x202000000 },
+        // Queen
+        new ulong[]{ 0xf6fbfbfefefbfbf6, 0xfb000000000000fb, 0xfb000202020200fb, 0xfe000202020200fe, 0xfe00020202020000, 0xfb000202020202fb, 0xfb000000000200fb, 0xf6fbfbfefefbfbf6 },
+        // King
+        new ulong[]{ 0xf1ecece7e7ececf1, 0xf1ecece7e7ececf1, 0xf1ecece7e7ececf1, 0xf1ecece7e7ececf1, 0xf6f1f1ececf1f1f6, 0xfbf6f6f6f6f6f6fb, 0xa0a000000000a0a, 0xa0f050000050f0a },
+        // king endgame
+        new ulong[]{ 0xe7ecf1f6f6f1ece7, 0xf1f6fb0000fbf6f1, 0xf1fb0a0f0f0afbf1, 0xf1fb0f14140ffbf1, 0xf1fb0f14140ffbf1, 0xf1fb0a0f0f0afbf1, 0xf1f100000000f1f1, 0xe7f1f1f1f1f1f1e7 }
     };
+    private static double PositionMultiplier = 0.6;
 
     private int depth = 4;
 
@@ -193,6 +134,15 @@ public class MyBot : IChessBot
     /// <summary> Postive = White is better / Negative = Black is better </summary>
     private static double Evaluate(Board board)
     {
+        if (board.IsInCheckmate())
+        {
+            return board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity;
+        }
+        else if (board.IsDraw())
+        {
+            return 0;
+        }
+
         double materialScore = 0;
         double positionScore = 0;
         foreach (var list in board.GetAllPieceLists())
@@ -201,14 +151,13 @@ public class MyBot : IChessBot
             {
                 double multiplier = piece.IsWhite ? 1 : -1;
                 materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
-                positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] / 2 - 5);
+                var square = new Square(piece.Square.File, (piece.IsWhite ? 7 - piece.Square.Rank : piece.Square.Rank));
+                positionScore += multiplier * ((double)(sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType - 1][square.Rank])[square.File]) * 2.0 * PositionMultiplier;
             }
         }
-        return materialScore
-            + positionScore
-            + (board.IsInCheckmate() ? board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity : 0.0)
-            //+ (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
-            + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0.0);
+
+
+        return materialScore + positionScore;
     }
 
     private static int[] mirror(int[] half)
