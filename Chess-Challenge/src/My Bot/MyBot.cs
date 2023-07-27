@@ -52,8 +52,6 @@ public class MyBot : IChessBot
     };
     private static double PositionMultiplier = 0.6;
 
-    private int depth = 4;
-
     public Move Think(Board board, Timer timer)
     {
         System.Console.WriteLine($"TableSize: {TranspositionTable.Count}");
@@ -89,7 +87,6 @@ public class MyBot : IChessBot
         foreach (Move legalMove in moves)
         {
             board.MakeMove(legalMove);
-
             var score = -Search(board, -beta, -alpha, depth - 1, extensions, !isWhite).Item2;
             if (score >= beta)
             {
@@ -117,15 +114,16 @@ public class MyBot : IChessBot
     {
         var best = Evaluate(board) * (isWhite ? 1 : -1);
         if (best >= beta) return beta;
+        if (alpha < best) alpha = best;
 
         if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
             {
                 board.MakeMove(capture);
-                var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
+                var score = -Quiescence(board, -beta, -alpha, !isWhite, depth - 1);
                 board.UndoMove(capture);
-                best = Math.Max(score, best);
 
                 if (best >= beta) break;
+                if (score > alpha) alpha = score;
             }
 
         return best;
@@ -158,20 +156,6 @@ public class MyBot : IChessBot
 
 
         return materialScore + positionScore;
-    }
-
-    private static int[] mirror(int[] half)
-    {
-        var ret = new int[64];
-
-        for (int i = 0; i < 32; i += 4)
-        {
-            Array.Copy(half, i, ret, i * 2, 4);
-            Array.Reverse(half, i, 4);
-            Array.Copy(half, i, ret, i * 2 + 4, 4);
-        }
-
-        return ret;
     }
 
     // delete this if bot is slow AND stupid 
