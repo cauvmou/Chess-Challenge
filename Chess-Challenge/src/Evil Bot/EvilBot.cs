@@ -1,295 +1,231 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Reflection;
 using ChessChallenge.API;
+
 
 namespace ChessChallenge.Example
 {
-    /// <summary> Stockfish </summary>
     public class EvilBot : IChessBot
     {
 
-        private Stockfish stockfish;
-
-        public EvilBot()
+        enum NodeBound
         {
-            System.Console.WriteLine("OS detected:   " + (IsLinux ? "Linux" : "Windows"));
-            System.Console.WriteLine("AVX supported: " + (HasAvxSupport ? "Yes" : "No"));
-            string path = (HasAvxSupport, IsLinux) switch
-            {
-                (true, true) => GetResourcePath("Stockfish", "avx2", "linux", "stockfish-ubuntu-x86-64-avx2"),
-                (false, true) => GetResourcePath("Stockfish", "popcnt", "linux", "stockfish-ubuntu-x86-64-modern"),
-                (true, false) => GetResourcePath("Stockfish", "avx2", "windows", "stockfish-windows-x86-64-avx2"),
-                (false, false) => GetResourcePath("Stockfish", "popcnt", "windows", "stockfish-windows-x86-64-modern"),
-            };
-            stockfish = new Stockfish(path, depth: 4, settings: new Stockfish.Settings
-            {
-                Threads = 8,
-                SlowMover = 10,
-                //SkillLevel = 8,
-                Elo = 1300,
-                MoveOverhead = 0,
-                MultiPV = 1,
-            });
-            stockfish.StartNewGame();
+            Upper,
+            Lower,
         }
 
-        public static string GetResourcePath(params string[] localPath)
+        class TranspositionTableEntry
         {
-            return Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "resources", Path.Combine(localPath));
-        }
+            public Move move;
+            public int depth;
+            public double value;
+            public NodeBound? bound;
 
-        public static bool IsLinux
-        {
-            get
+            public TranspositionTableEntry(Move move, int depth, double value, NodeBound? bound = null)
             {
-                int p = (int)Environment.OSVersion.Platform;
-                return (p == 4) || (p == 6) || (p == 128);
+                this.move = move;
+                this.depth = depth;
+                this.value = value;
+                this.bound = bound;
             }
         }
 
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-        private static extern long GetEnabledXStateFeatures();
+        private Dictionary<ulong, TranspositionTableEntry> TranspositionTable = new Dictionary<ulong, TranspositionTableEntry>();
 
-        public static bool HasAvxSupport
+        private static readonly double[] PieceTypeToValue = { 0, 100, 350, 350, 525, 1000, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+
+        // TODO: Mirroring / Compression?
+        private static double[][] PiecePositionTable = new double[][]{
+        // Pawn
+        mirror(new double[]
         {
-            get
-            {
-                try
-                {
-                    return (GetEnabledXStateFeatures() & 4) != 0;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-        }
+            2,   2,   2,   2,
+            2.5,  3,   3,   0,
+            2.5,  2,   1,   2,
+            2,   2,   3, 6.5,
+            2.5, 2.5,  4,   7,
+            3,   3,   6,   7,
+            9,   9,   9,   9,
+            2,   2,   2,   2,
+        }),
+        // Knight
+        mirror(new double[]
+        {
+            0,   1,   2,   2,
+            1,   3,   6,   7,
+            2,   6,   8,   9,
+            2,   7,   9,  10,
+            2,   7,   9,  10,
+            2,   6,   8,   9,
+            1,   3,   6,   7,
+            0,   1,   2,   2
+        }),
+        // Bishop
+        mirror(new double[]
+        {
+            4,   2,   2,   2,
+            2,  6.5,  5,   5,
+            2,   7,  6.5, 6.5,
+            2,  5.5,  8.5,  7,
+            2,   6,   6,   7,
+            2,   5,   6,   7,
+            2,   5,   5,   5,
+            0,   2,   2,   2
+        }),
+        // Rook
+        mirror(new double[]
+        {
+            3,   3,   5,   6,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            0,   3,   3,   3,
+            6.5,   9,   9,   9,
+            5.5,  5.5,  5.5,  5.5
+        }),
+        // Queen
+        mirror(new double[]
+        {
+            1,   3,   3,   4,
+            3,   6,   7,   8,
+            3,   7,   9,  10,
+            4,   8,  10,  10,
+            4,   8,  10,  10,
+            3,   7,   9,  10,
+            3,   6,   7,   8,
+            1,   3,   3,   4
+        }),
+        // King
+        new double[]
+        {
+             6,   6,   7,   5,   5,   5,   7,   6
+        }.Concat(mirror(new double[]
+        {
+             6, 5.5, 4.5, 4.5,
+             5,   4,   4,   4,
+             3,   3,   3,   1,
+             3,   2,   2,   0,
+             3,   2,   2,   0,
+             2,   1,   1,   0,
+             2,   1,   1,   0,
+             5,   5,   5,   5,  // TODO: trim this?
+        })).ToArray()
+    };
 
         public Move Think(Board board, Timer timer)
         {
-            (int, int) time = board.IsWhiteToMove ? (timer.MillisecondsRemaining, timer.OpponentMillisecondsRemaining) : (timer.OpponentMillisecondsRemaining, timer.MillisecondsRemaining);
-            stockfish.SetFenPosition(board.GetFenString());
-            return new Move(stockfish.GetBestMoveTime(time.Item1, time.Item2, 300), board);
+            System.Console.WriteLine($"TableSize: {TranspositionTable.Count}");
+            var move = Search(board, double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
+            return move.IsNull ? board.GetLegalMoves()[new Random().Next(board.GetLegalMoves().Length)] : move;
         }
 
-        private class Stockfish
+        /// <summary> AlphaNegamax </summary>
+        private (Move, double) Search(Board board, double alpha, double beta, int depth, int extensions, bool isWhite)
         {
-
-            private StockfishProcess process;
-            private Settings settings;
-            private int depth;
-            private const int MAX_TRIES = 200;
-
-            public Stockfish(string path, int depth = 4, Settings? settings = null)
+            var alphaCopy = alpha;
+            if (TranspositionTable.ContainsKey(board.ZobristKey))
             {
-                this.settings = settings == null ? new Settings() : settings;
-                this.process = new StockfishProcess(path);
-                this.depth = depth;
-                foreach (var property in this.settings.GetPropertiesAsDictionary())
+                var entry = TranspositionTable.GetValueOrDefault(board.ZobristKey);
+                if (entry.depth >= depth)
                 {
-                    SetOption(property.Key, property.Value);
+                    if (entry.bound == null) return (entry.move, entry.value);
+                    else if (entry.bound == NodeBound.Lower) alpha = Math.Max(alpha, entry.value);
+                    else if (entry.bound == NodeBound.Upper) beta = Math.Min(beta, entry.value);
+
+                    if (alpha >= beta) return (entry.move, entry.value);
                 }
-                StartNewGame();
             }
 
-            private bool IsReady()
-            {
-                Send("isready");
-                var tries = 0;
-                while (tries < MAX_TRIES)
-                {
-                    ++tries;
+            var moves = board.GetLegalMoves();
 
-                    if (process.ReadLine() == "readyok")
+            // Depth check
+            if (board.IsInCheckmate() || board.IsDraw()) return (Move.NullMove, Quiescence(board, alpha, beta, isWhite, 0));
+            if (depth == 0) return (Move.NullMove, Quiescence(board, alpha, beta, isWhite, extensions));
+
+            (Move, double) bestValue = (moves[0], double.NegativeInfinity);
+
+            foreach (Move legalMove in moves)
+            {
+                board.MakeMove(legalMove);
+                var score = -Search(board, -beta, -alpha, depth - 1, extensions, !isWhite).Item2;
+                if (score >= beta)
+                {
+                    bestValue = (legalMove, score);
+                    board.UndoMove(legalMove);
+                    break;
+                }
+                if (score > bestValue.Item2)
+                {
+                    bestValue = (legalMove, score);
+                    if (score > alpha)
                     {
-                        return true;
+                        alpha = score;
                     }
                 }
-                throw new ApplicationException("Max tries exceeded!");
+                board.UndoMove(legalMove);
             }
 
-            private void SetOption(string name, string value)
+            var value = bestValue.Item2;
+            var tableEntry = new TranspositionTableEntry(bestValue.Item1, depth, bestValue.Item2, value <= alphaCopy ? NodeBound.Upper : value >= beta ? NodeBound.Lower : null);
+            if (TranspositionTable.ContainsKey(board.ZobristKey)) TranspositionTable[board.ZobristKey] = tableEntry;
+            else TranspositionTable.Add(board.ZobristKey, tableEntry);
+
+            return bestValue;
+        }
+
+        private double Quiescence(Board board, double alpha, double beta, bool isWhite, int depth)
+        {
+            var best = Evaluate(board) * (isWhite ? 1 : -1);
+            if (best >= beta) return beta;
+
+            if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
+                {
+                    board.MakeMove(capture);
+                    var score = -Quiescence(board, -beta, -Math.Max(alpha, best), isWhite, depth - 1);
+                    board.UndoMove(capture);
+                    best = Math.Max(score, best);
+
+                    if (best >= beta) break;
+                }
+
+            return best;
+        }
+
+        /// <summary> Postive = White is better / Negative = Black is better </summary>
+        private static double Evaluate(Board board)
+        {
+            double materialScore = 0;
+            double positionScore = 0;
+            foreach (var list in board.GetAllPieceLists())
             {
-                Send($"setoption name {name} value {value}");
+                foreach (var piece in list)
+                {
+                    double multiplier = piece.IsWhite ? 1 : -1;
+                    materialScore += multiplier * PieceTypeToValue[(int)piece.PieceType];
+                    positionScore += multiplier * (PiecePositionTable[(int)piece.PieceType - 1][piece.IsWhite ? piece.Square.Index : 63 - piece.Square.Index] - 5);
+                }
             }
+            return materialScore
+                + positionScore
+                + (board.IsInCheckmate() ? board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity : 0.0)
+                //+ (board.IsInCheck() ? (board.IsWhiteToMove ? -1 : 1) * 300 : 0)
+                + (board.IsDraw() ? (board.IsWhiteToMove ? -1 : 1) * -10000 : 0.0);
+        }
 
-            public void StartNewGame()
+        private static double[] mirror(double[] half)
+        {
+            var ret = new double[64];
+
+            for (int i = 0; i < 32; i += 4)
             {
-                Send("ucinewgame");
-                if (!IsReady())
-                {
-                    throw new ApplicationException();
-                }
+                Array.Copy(half, i, ret, i * 2, 4);
+                Array.Reverse(half, i, 4);
+                Array.Copy(half, i, ret, i * 2 + 4, 4);
             }
 
-            public void SetFenPosition(string fenPosition)
-            {
-                Send($"position fen {fenPosition}");
-            }
-
-            public string GetBestMoveTime(int wtime, int btime, int estimate)
-            {
-                GoTime(wtime, btime, estimate);
-                var tries = 0;
-                while (true)
-                {
-                    if (tries > MAX_TRIES)
-                    {
-                        throw new ApplicationException("Max tries exceeded!");
-                    }
-
-                    var data = ReadLineAsList();
-                    if (data[0] == "bestmove")
-                    {
-                        if (data[1] == "(none)")
-                        {
-                            return null;
-                        }
-
-                        return data[1];
-                    }
-                }
-            }
-
-            private void GoTime(int wtime, int btime, int estimate)
-            {
-                Send($"go wtime {wtime} btime {btime} winc 0 binc 0", estimatedTime: estimate + 100);
-            }
-
-            private void Send(string command, int estimatedTime = 100)
-            {
-                process.WriteLine(command);
-                process.Wait(estimatedTime);
-            }
-
-            private List<string> ReadLineAsList()
-            {
-                var data = process.ReadLine();
-                return data.Split(' ').ToList();
-            }
-
-            public class Settings
-            {
-                public int Contempt { get; set; }
-                public int Threads { get; set; }
-                public bool Ponder { get; set; }
-                public int MultiPV { get; set; }
-                public int Elo { get; set; }
-                public int SkillLevel { get; set; }
-                public int MoveOverhead { get; set; }
-                public int SlowMover { get; set; }
-                public bool UCIChess960 { get; set; }
-
-                public Settings(
-                    int contempt = 0,
-                    int threads = 0,
-                    bool ponder = false,
-                    int multiPV = 1,
-                    int elo = 0,
-                    int skillLevel = 8,
-                    int moveOverhead = 30,
-                    int slowMover = 80,
-                    bool uciChess960 = false
-                )
-                {
-                    Contempt = contempt;
-                    Ponder = ponder;
-                    Threads = threads;
-                    MultiPV = multiPV;
-                    Elo = elo;
-                    SkillLevel = skillLevel;
-                    MoveOverhead = moveOverhead;
-                    SlowMover = slowMover;
-                    UCIChess960 = uciChess960;
-                }
-
-                public Dictionary<string, string> GetPropertiesAsDictionary()
-                {
-                    return new Dictionary<string, string>
-                    {
-                        ["Contempt"] = Contempt.ToString(),
-                        ["Threads"] = Threads.ToString(),
-                        ["Ponder"] = Ponder.ToString(),
-                        ["MultiPV"] = MultiPV.ToString(),
-                        ["UCI_LimitStrength"] = Elo == 0 ? "false" : "true",
-                        ["UCI_Elo"] = Elo.ToString(),
-                        ["Skill level"] = SkillLevel.ToString(),
-                        ["Move Overhead"] = MoveOverhead.ToString(),
-                        ["Slow Mover"] = SlowMover.ToString(),
-                        ["UCI_Chess960"] = UCIChess960.ToString(),
-                    };
-                }
-            }
-
-            private class StockfishProcess
-            {
-
-                private ProcessStartInfo processStartInfo { get; set; }
-                private Process process { get; set; }
-                private bool debug;
-
-                public StockfishProcess(string path, bool debug = false)
-                {
-                    processStartInfo = new ProcessStartInfo
-                    {
-                        FileName = path,
-                        UseShellExecute = false,
-                        RedirectStandardError = true,
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true
-                    };
-                    process = new Process
-                    {
-                        StartInfo = processStartInfo
-                    };
-                    this.debug = debug;
-                    System.Console.WriteLine("Starting process...");
-                    process.Start();
-                    System.Console.WriteLine("Process started!");
-                    System.Console.WriteLine(ReadLine());
-                }
-
-                public void Wait(int millisecond)
-                {
-                    this.process.WaitForExit(millisecond);
-                }
-
-                public void WriteLine(string command)
-                {
-                    if (this.debug) System.Console.WriteLine("$> " + command);
-                    if (process.StandardInput == null)
-                    {
-                        throw new NullReferenceException();
-                    }
-                    process.StandardInput.WriteLine(command);
-                    process.StandardInput.Flush();
-                }
-
-                public string ReadLine()
-                {
-                    if (process.StandardOutput == null)
-                    {
-                        throw new NullReferenceException();
-                    }
-                    var line = process.StandardOutput.ReadLine();
-                    if (this.debug) System.Console.WriteLine("$: " + line);
-                    return line;
-                }
-
-                public void Start()
-                {
-                    process.Start();
-                }
-
-                ~StockfishProcess()
-                {
-                    process.Close();
-                }
-            }
+            return ret;
         }
     }
 }
