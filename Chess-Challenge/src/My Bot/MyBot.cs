@@ -9,13 +9,11 @@ public class MyBot : IChessBot
 
     struct TranspositionTableEntry
     {
-        public ulong zobristHash;
         public Move move;
-        public sbyte depth;
+        public byte depth;
         public double value;
-        public byte? flag;
+        public byte flag;
     }
-
     private static ulong TpMask = 0x7FFFFF;
     private TranspositionTableEntry[] TranspositionTable;
 
@@ -50,19 +48,17 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         this.board = board;
-        // depthIncreaseCheck(board);
-        Console.WriteLine(scoreEval());
         var move = Search(double.NegativeInfinity, double.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
         return move;
     }
 
     /// <summary> AlphaNegamax </summary>
-    private (Move, double) Search(double alpha, double beta, sbyte depth, int extensions, bool isWhite)
+    private (Move, double) Search(double alpha, double beta, byte depth, int extensions, bool isWhite)
     {
         var alphaCopy = alpha;
         ref TranspositionTableEntry transposition = ref TranspositionTable[board.ZobristKey & TpMask];
 
-        if (transposition.zobristHash == board.ZobristKey && transposition.flag != flagInvalid && transposition.depth >= depth)
+        if (transposition.flag != flagInvalid && transposition.depth >= depth)
         {
             if (transposition.flag == flagExact) return (transposition.move, transposition.value);
             else if (transposition.flag == flagLower) alpha = Math.Max(alpha, transposition.value);
@@ -81,7 +77,7 @@ public class MyBot : IChessBot
         foreach (Move legalMove in moves)
         {
             board.MakeMove(legalMove);
-            var score = -Search(-beta, -alpha, (sbyte)(depth - 1), extensions, !isWhite).Item2;
+            var score = -Search(-beta, -alpha, (byte)(depth - 1), extensions, !isWhite).Item2;
             if (score >= beta)
             {
                 bestValue = (legalMove, score);
@@ -98,13 +94,10 @@ public class MyBot : IChessBot
 
         var value = bestValue.Item2;
 
-        transposition.zobristHash = board.ZobristKey;
         transposition.move = bestValue.Item1;
         transposition.depth = depth;
-        transposition.value = bestValue.Item2;
-        transposition.flag = (value <= alphaCopy)
-                ? flagUpper
-                : value >= beta ? flagLower : flagExact;
+        transposition.value = value;
+        transposition.flag = value <= alphaCopy ? flagUpper : value >= beta ? flagLower : flagExact;
 
         return bestValue;
     }
@@ -133,13 +126,8 @@ public class MyBot : IChessBot
     {
         if (board.IsInCheckmate()) return board.IsWhiteToMove ? double.NegativeInfinity : double.PositiveInfinity;
         //else if (board.IsDraw()) return drawReluctancy(board)*100;
-        else if (board.IsDraw()) return -scoreEval();
+        else if (board.IsDraw()) return 0;
 
-        return scoreEval();
-    }
-
-    private double scoreEval()
-    {
         double materialScore = 0;
         double positionScore = 0;
         foreach (var list in board.GetAllPieceLists())
@@ -155,17 +143,4 @@ public class MyBot : IChessBot
 
         return materialScore + positionScore;
     }
-
-
-    // delete this if bot is slow AND stupid 
-    // HE WAS!
-    // public void depthIncreaseCheck(Board board)
-    // {
-    //     depth = (board.GetLegalMoves().Length) switch
-    //     {
-    //         > 20 => 4,
-    //         > 10 => 5,
-    //         <= 10 => 6
-    //     };
-    // }
 }
