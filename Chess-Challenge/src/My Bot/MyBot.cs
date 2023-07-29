@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using ChessChallenge.API;
 
 public class MyBot : IChessBot
@@ -10,18 +8,18 @@ public class MyBot : IChessBot
     struct TranspositionTableEntry
     {
         public Move move;
-        public byte depth;
+        public byte depth, flag;
         public float value;
-        public byte flag;
     }
     private static ulong TpMask = 0x7FFFFF;
     private TranspositionTableEntry[] TranspositionTable;
+    /*
+    private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static int TotalPiecePhaseValue = (PieceToPhaseValue[1] << 4) + (PieceToPhaseValue[2] << 2) + (PieceToPhaseValue[3] << 2) + (PieceToPhaseValue[4] << 2) + (PieceToPhaseValue[5] << 1);
+    */
+    private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }, 
+        PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
-    private static readonly float[] PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
-    private static readonly float[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
-    private static readonly float TotalPiecePhaseValue = PieceToPhaseValue[1] * 16 + PieceToPhaseValue[2] * 4 + PieceToPhaseValue[3] * 4 + PieceToPhaseValue[4] * 4 + PieceToPhaseValue[5] * 2;
-
-    // TODO: Mirroring / Compression?
     // Holds ranks (ordered 7-0) that are ulongs in which there are the files (ordered 0-7) encoded.
     private static ulong[,] PiecePositionTable = new ulong[,]{
         { 0x0, 0xfb113f222f1e4331, 0xf60c1c200f0d03fd, 0xf508060b0a0306f9, 0xf405030806fefff3, 0xfa100101fbfefef3, 0xf5130cf9f5f600ef, 0x0 },                               // Pawn MG
@@ -40,33 +38,31 @@ public class MyBot : IChessBot
     private static float PositionMultiplier = 1.0f;
     private Board board;
 
-    public MyBot()
-    {
-
-    }
-
     public Move Think(Board board, Timer timer)
     {
         this.board = board;
         TranspositionTable = new TranspositionTableEntry[TpMask + 1];
         var move = Search(float.NegativeInfinity, float.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
-        System.Console.WriteLine($"Evaluation: {Evaluate()}");
+        Console.WriteLine($"Evaluation: {Evaluate()}");
         return move;
     }
 
     /// <summary> AlphaNegamax </summary>
     private (Move, float) Search(float alpha, float beta, byte depth, int extensions, bool isWhite)
     {
-        var alphaCopy = alpha;
         ref TranspositionTableEntry transposition = ref TranspositionTable[board.ZobristKey & TpMask];
+        float alphaCopy = alpha, transValue = transposition.value;
 
         if (transposition.flag != flagInvalid && transposition.depth >= depth)
         {
-            if (transposition.flag == flagExact) return (transposition.move, transposition.value);
-            else if (transposition.flag == flagLower) alpha = Math.Max(alpha, transposition.value);
-            else if (transposition.flag == flagUpper) beta = Math.Min(beta, transposition.value);
+            switch (transposition.flag)
+            {
+                case flagExact: return (transposition.move, transValue);
+                case flagLower: alpha = Math.Max(alpha, transValue); break;
+                case flagUpper: beta = Math.Min(beta, transValue); break;
+            }
 
-            if (alpha >= beta) return (transposition.move, transposition.value);
+            if (alpha >= beta) return (transposition.move, transValue);
         }
 
         var moves = board.GetLegalMoves();
@@ -130,22 +126,29 @@ public class MyBot : IChessBot
         //else if (board.IsDraw()) return drawReluctancy(board)*100;
         else if (board.IsDraw()) return 0;
 
-        float mg = 0;
-        float eg = 0;
-        float phase = TotalPiecePhaseValue;
+        float midGame = 0,
+            endGame = 0;
+        int phase = 24; // phase = TotalPiecePhaseValue
+
         foreach (var list in board.GetAllPieceLists())
         {
             foreach (var piece in list)
             {
-                float multiplier = piece.IsWhite ? 1 : -1;
-                var material = multiplier * PieceTypeToValue[(int)piece.PieceType];
-                var square = new Square(piece.Square.File, (piece.IsWhite ? 7 - piece.Square.Rank : piece.Square.Rank));
-                mg += multiplier * ((sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType - 1, square.Rank])[square.File]) * 2 * PositionMultiplier + material;
-                eg += multiplier * ((sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType + 5, square.Rank])[square.File]) * 2 * PositionMultiplier + material;
+                float multiplier = piece.IsWhite ? 1 : -1,
+                    material = multiplier * PieceTypeToValue[(int)piece.PieceType];
+                Square square = new Square(piece.Square.File, (piece.IsWhite ? 7 - piece.Square.Rank : piece.Square.Rank));
+                midGame += boardEval(piece, square, material, 1, multiplier);
+                endGame += boardEval(piece, square, material, -5, multiplier);
                 phase -= PieceToPhaseValue[(int)piece.PieceType];
             }
         }
-        phase = (phase * 256 + (TotalPiecePhaseValue / 2)) / TotalPiecePhaseValue;
-        return ((mg * (256 - phase)) + (eg * phase)) / 256;
+
+        phase = ((phase << 8) + 12) / 24; // phase = (phase * 256 + (TotalPiecePhaseValue / 2)) / TotalPiecePhaseValue
+        return ((midGame * (256 - phase)) + (endGame * phase)) / 256;
+    }
+
+    private float boardEval(Piece piece, Square square, float material, int pieceTypeShift, float multiplier)
+    {
+        return multiplier * (((sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType - pieceTypeShift, square.Rank])[square.File]) << 1) * PositionMultiplier + material;
     }
 }
