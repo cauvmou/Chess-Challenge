@@ -3,13 +3,14 @@ using ChessChallenge.API;
 
 public class MyBot : IChessBot
 {
-    const byte flagInvalid = 0, flagUpper = 1, flagLower = 2, flagExact = 3;
+    const sbyte flagInvalid = 0, flagUpper = 1, flagLower = 2, flagExact = 3;
 
     struct TranspositionTableEntry
     {
         public Move move;
-        public byte depth, flag;
-        public float value;
+        public sbyte depth, flag;
+        public int value;
+        public ulong fullKey;
     }
     private static ulong TpMask = 0x7FFFFF;
     private TranspositionTableEntry[] TranspositionTable;
@@ -17,8 +18,7 @@ public class MyBot : IChessBot
     private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
     private static int TotalPiecePhaseValue = (PieceToPhaseValue[1] << 4) + (PieceToPhaseValue[2] << 2) + (PieceToPhaseValue[3] << 2) + (PieceToPhaseValue[4] << 2) + (PieceToPhaseValue[5] << 1);
     */
-    private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }, 
-        PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
+    private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }, PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // Holds ranks (ordered 7-0) that are ulongs in which there are the files (ordered 0-7) encoded.
     private static ulong[,] PiecePositionTable = new ulong[,]{
@@ -35,106 +35,123 @@ public class MyBot : IChessBot
         { 0xa05090d0d0b0bfc, 0xf0c1d14100af8, 0x4091117180403f6, 0x121c141c160c0b01, 0xb13110f17090ef7, 0x20508040307f3f8, 0xf0eef5f8f8f1f5f5, 0xecf6f0feebf5f2f0 },        // Queen EG
         { 0xf80207fbf7f7efdb, 0x50b1308080708fa, 0x616160a070b0805, 0x10d100d0d0c0bfc, 0xfb040b0d0c0afef7, 0xfc03080b0a05fff7, 0xf8fe02070602fbf3, 0xebf4f9f2fbf6efe6 }     // King EG
     };
-    private static float PositionMultiplier = 1.0f;
-    private Board board;
+    private static int CheckmateValue = 1000000;
+    private Board Board;
+    private Move BestMove;
+    private int StartPly;
+
+    public MyBot()
+    {
+        TranspositionTable = new TranspositionTableEntry[TpMask + 1];
+    }
 
     public Move Think(Board board, Timer timer)
     {
-        this.board = board;
-        TranspositionTable = new TranspositionTableEntry[TpMask + 1];
-        var move = Search(float.NegativeInfinity, float.PositiveInfinity, 4, 2, board.IsWhiteToMove).Item1;
+        Board = board;
+        StartPly = Board.PlyCount;
+        Search(-CheckmateValue, CheckmateValue, 4, isRoot: true);
         Console.WriteLine($"Evaluation: {Evaluate()}");
-        return move;
+        return BestMove;
     }
 
     /// <summary> AlphaNegamax </summary>
-    private (Move, float) Search(float alpha, float beta, byte depth, int extensions, bool isWhite)
+    private int Search(int alpha, int beta, int depth, bool isRoot = false)
     {
-        ref TranspositionTableEntry transposition = ref TranspositionTable[board.ZobristKey & TpMask];
-        float alphaCopy = alpha, transValue = transposition.value;
+        ref TranspositionTableEntry transposition = ref TranspositionTable[Board.ZobristKey & TpMask];
+        int alphaCopy = alpha, transValue = transposition.value;
 
-        if (transposition.flag != flagInvalid && transposition.depth >= depth)
+        if (transposition.flag != flagInvalid && transposition.depth >= depth && !isRoot)
         {
             switch (transposition.flag)
             {
-                case flagExact: return (transposition.move, transValue);
+                case flagExact: return transValue;
                 case flagLower: alpha = Math.Max(alpha, transValue); break;
                 case flagUpper: beta = Math.Min(beta, transValue); break;
             }
 
-            if (alpha >= beta) return (transposition.move, transValue);
+            if (alpha >= beta) return transValue;
         }
 
-        var moves = board.GetLegalMoves();
+        bool quiescence = depth <= 0;
+        int bestValue = -CheckmateValue;
 
-        // Depth check
-        if (depth == 0 || board.IsInCheckmate() || board.IsDraw()) return (Move.NullMove, Quiescence(alpha, beta, isWhite, extensions));
+        // Delta Pruning
+        if (quiescence)
+        {
+            bestValue = Evaluate() * (Board.IsWhiteToMove ? 1 : -1);
+            if (bestValue >= beta) return beta;
+            if (bestValue < alpha - PieceTypeToValue[5]) return alpha;
+            alpha = Math.Max(alpha, bestValue);
+        }
 
-        (Move, float) bestValue = (moves[0], float.NegativeInfinity);
+        var moves = OrderMoves(Board.GetLegalMoves(quiescence), transposition);
 
         foreach (Move legalMove in moves)
         {
-            board.MakeMove(legalMove);
-            var score = -Search(-beta, -alpha, (byte)(depth - 1), extensions, !isWhite).Item2;
+            Board.MakeMove(legalMove);
+            var score = -Search(-beta, -alpha, depth - 1);
             if (score >= beta)
             {
-                bestValue = (legalMove, score);
-                board.UndoMove(legalMove);
+                bestValue = score;
+                transposition.move = legalMove;
+                if (isRoot) BestMove = legalMove;
+                Board.UndoMove(legalMove);
                 break;
             }
-            if (score > bestValue.Item2)
+            if (score > bestValue)
             {
-                bestValue = (legalMove, score);
+                bestValue = score;
+                transposition.move = legalMove;
+                if (isRoot) BestMove = legalMove;
                 if (score > alpha) alpha = score;
             }
-            board.UndoMove(legalMove);
+            Board.UndoMove(legalMove);
         }
 
-        var value = bestValue.Item2;
+        if (!quiescence && moves.Length == 0) { return Board.IsInCheck() ? -CheckmateValue + Board.PlyCount - StartPly : 0; }
 
-        transposition.move = bestValue.Item1;
-        transposition.depth = depth;
-        transposition.value = value;
-        transposition.flag = value <= alphaCopy ? flagUpper : value >= beta ? flagLower : flagExact;
+        transposition.depth = (sbyte)depth;
+        transposition.value = bestValue;
+        transposition.flag = bestValue <= alphaCopy ? flagUpper : bestValue >= beta ? flagLower : flagExact;
+        transposition.fullKey = Board.ZobristKey;
 
         return bestValue;
     }
 
-    private float Quiescence(float alpha, float beta, bool isWhite, int depth)
+    private Move[] OrderMoves(Move[] moves, TranspositionTableEntry transposition)
     {
-        var best = Evaluate() * (isWhite ? 1 : -1);
-        if (best >= beta) return beta;
-        if (alpha < best) alpha = best;
+        int[] movePriorities = new int[moves.Length];
+        for (int m = 0; m < moves.Length; m++) movePriorities[m] = MoveScore(moves[m], transposition);
+        Array.Sort(movePriorities, moves);
+        Array.Reverse(moves);
+        return moves;
+    }
 
-        if (depth > 0) foreach (Move capture in board.GetLegalMoves(true))
-            {
-                board.MakeMove(capture);
-                var score = -Quiescence(-beta, -alpha, !isWhite, depth - 1);
-                board.UndoMove(capture);
-
-                if (best >= beta) break;
-                if (score > alpha) alpha = score;
-            }
-
-        return best;
+    private int MoveScore(Move move, TranspositionTableEntry transposition)
+    {
+        int score = 0;
+        if (transposition.move == move && transposition.fullKey == Board.ZobristKey) score += 10000;
+        if (move.IsCapture) score += PieceTypeToValue[(int)move.CapturePieceType] - PieceTypeToValue[(int)move.MovePieceType];
+        if (move.IsPromotion) score += PieceTypeToValue[(int)move.PromotionPieceType];
+        return score;
     }
 
     /// <summary> Postive = White is better / Negative = Black is better </summary>
-    private float Evaluate()
+    private int Evaluate()
     {
-        if (board.IsInCheckmate()) return board.IsWhiteToMove ? float.NegativeInfinity : float.PositiveInfinity;
+        if (Board.IsInCheckmate()) return Board.IsWhiteToMove ? -CheckmateValue : CheckmateValue;
         //else if (board.IsDraw()) return drawReluctancy(board)*100;
-        else if (board.IsDraw()) return 0;
+        else if (Board.IsDraw()) return 0;
 
-        float midGame = 0,
+        int midGame = 0,
             endGame = 0;
         int phase = 24; // phase = TotalPiecePhaseValue
 
-        foreach (var list in board.GetAllPieceLists())
+        foreach (var list in Board.GetAllPieceLists())
         {
             foreach (var piece in list)
             {
-                float multiplier = piece.IsWhite ? 1 : -1,
+                int multiplier = piece.IsWhite ? 1 : -1,
                     material = multiplier * PieceTypeToValue[(int)piece.PieceType];
                 Square square = new Square(piece.Square.File, (piece.IsWhite ? 7 - piece.Square.Rank : piece.Square.Rank));
                 midGame += boardEval(piece, square, material, 1, multiplier);
@@ -147,8 +164,8 @@ public class MyBot : IChessBot
         return ((midGame * (256 - phase)) + (endGame * phase)) / 256;
     }
 
-    private float boardEval(Piece piece, Square square, float material, int pieceTypeShift, float multiplier)
+    private int boardEval(Piece piece, Square square, int material, int pieceTypeShift, int multiplier)
     {
-        return multiplier * (((sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType - pieceTypeShift, square.Rank])[square.File]) << 1) * PositionMultiplier + material;
+        return multiplier * (((sbyte)BitConverter.GetBytes(PiecePositionTable[(int)piece.PieceType - pieceTypeShift, square.Rank])[square.File]) << 1) + material;
     }
 }
