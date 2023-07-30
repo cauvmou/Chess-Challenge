@@ -6,15 +6,29 @@ using System.Linq;
 using System.Reflection;
 using ChessChallenge.API;
 
-namespace ChessChallenge.Example
+namespace ChessChallenge.Enemy
 {
     /// <summary> Stockfish </summary>
-    public class EvilBot : IChessBot
+    public class StockfishBot : IChessBot
     {
 
         private Stockfish stockfish;
 
-        public EvilBot()
+        private static int Elo = 1320;
+
+        public static int ELO
+        {
+            get => Elo;
+            set
+            {
+                if (value >= 1320 && value <= 3190)
+                {
+                    Elo = value;
+                }
+            }
+        }
+
+        public StockfishBot()
         {
             System.Console.WriteLine("OS detected:   " + (IsLinux ? "Linux" : "Windows"));
             System.Console.WriteLine("AVX supported: " + (HasAvxSupport ? "Yes" : "No"));
@@ -30,16 +44,19 @@ namespace ChessChallenge.Example
                 Threads = 8,
                 SlowMover = 10,
                 //SkillLevel = 8,
-                Elo = 1300,
+                Elo = Elo,
                 MoveOverhead = 0,
                 MultiPV = 1,
             });
             stockfish.StartNewGame();
+            System.Console.WriteLine($"Stockfish started with UCI-Elo {Elo}");
         }
 
         public static string GetResourcePath(params string[] localPath)
         {
-            return Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "resources", Path.Combine(localPath));
+            string? path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            if (path == null) throw new FileNotFoundException();
+            return Path.Combine(path, "resources", Path.Combine(localPath));
         }
 
         public static bool IsLinux
@@ -73,7 +90,8 @@ namespace ChessChallenge.Example
         {
             (int, int) time = board.IsWhiteToMove ? (timer.MillisecondsRemaining, timer.OpponentMillisecondsRemaining) : (timer.OpponentMillisecondsRemaining, timer.MillisecondsRemaining);
             stockfish.SetFenPosition(board.GetFenString());
-            return new Move(stockfish.GetBestMoveTime(time.Item1, time.Item2, 300), board);
+            string? move = stockfish.GetBestMoveTime(time.Item1, time.Item2, 300);
+            return move == null ? Move.NullMove : new Move(move, board);
         }
 
         private class Stockfish
@@ -131,7 +149,7 @@ namespace ChessChallenge.Example
                 Send($"position fen {fenPosition}");
             }
 
-            public string GetBestMoveTime(int wtime, int btime, int estimate)
+            public string? GetBestMoveTime(int wtime, int btime, int estimate)
             {
                 GoTime(wtime, btime, estimate);
                 var tries = 0;
@@ -269,7 +287,7 @@ namespace ChessChallenge.Example
                     process.StandardInput.Flush();
                 }
 
-                public string ReadLine()
+                public string? ReadLine()
                 {
                     if (process.StandardOutput == null)
                     {

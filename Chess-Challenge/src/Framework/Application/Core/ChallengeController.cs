@@ -1,5 +1,4 @@
 ﻿using ChessChallenge.Chess;
-using ChessChallenge.Example;
 using Raylib_cs;
 using System;
 using System.IO;
@@ -10,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using static ChessChallenge.Application.Settings;
 using static ChessChallenge.Application.ConsoleHelper;
+using ChessChallenge.Enemy;
 
 namespace ChessChallenge.Application
 {
@@ -19,7 +19,8 @@ namespace ChessChallenge.Application
         {
             Human,
             MyBot,
-            EvilBot
+            UserBot,
+            Stockfish
         }
 
         // Game state
@@ -28,7 +29,7 @@ namespace ChessChallenge.Application
         bool isPlaying;
         Board board;
         public ChessPlayer PlayerWhite { get; private set; }
-        public ChessPlayer PlayerBlack {get;private set;}
+        public ChessPlayer PlayerBlack { get; private set; }
 
         float lastMoveMadeTime;
         bool isWaitingToPlayMove;
@@ -40,7 +41,7 @@ namespace ChessChallenge.Application
         readonly string[] botMatchStartFens;
         int botMatchGameIndex;
         public BotMatchStats BotStatsA { get; private set; }
-        public BotMatchStats BotStatsB {get;private set;}
+        public BotMatchStats BotStatsB { get; private set; }
         bool botAPlaysWhite;
 
 
@@ -209,7 +210,8 @@ namespace ChessChallenge.Application
             return type switch
             {
                 PlayerType.MyBot => new ChessPlayer(new MyBot(), type, GameDurationMilliseconds),
-                PlayerType.EvilBot => new ChessPlayer(new EvilBot(), type, GameDurationMilliseconds),
+                PlayerType.UserBot => new ChessPlayer(new UserBot(), type, GameDurationMilliseconds),
+                PlayerType.Stockfish => new ChessPlayer(new StockfishBot(), type, GameDurationMilliseconds),
                 _ => new ChessPlayer(new HumanPlayer(boardUI), type)
             };
         }

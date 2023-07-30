@@ -14,10 +14,6 @@ public class MyBot : IChessBot
     }
     private static ulong TpMask = 0x7FFFFF;
     private TranspositionTableEntry[] TranspositionTable;
-    /*
-    private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
-    private static int TotalPiecePhaseValue = (PieceToPhaseValue[1] << 4) + (PieceToPhaseValue[2] << 2) + (PieceToPhaseValue[3] << 2) + (PieceToPhaseValue[4] << 2) + (PieceToPhaseValue[5] << 1);
-    */
     private static int[] PieceToPhaseValue = { 0, 0, 1, 1, 2, 4, 0 }, PieceTypeToValue = { 0, 82, 337, 365, 477, 1025, 0 }; // None, Pawn, Knight, Bishop, Rook, Queen, King
 
     // Holds ranks (ordered 7-0) that are ulongs in which there are the files (ordered 0-7) encoded.
@@ -36,6 +32,7 @@ public class MyBot : IChessBot
         { 0xf80207fbf7f7efdb, 0x50b1308080708fa, 0x616160a070b0805, 0x10d100d0d0c0bfc, 0xfb040b0d0c0afef7, 0xfc03080b0a05fff7, 0xf8fe02070602fbf3, 0xebf4f9f2fbf6efe6 }     // King EG
     };
     private static int CheckmateValue = 1000000;
+    private static int DrawReluctancyValue = -20;
     private Board Board;
     private Move BestMove;
     private int StartPly;
@@ -49,8 +46,14 @@ public class MyBot : IChessBot
     {
         Board = board;
         StartPly = Board.PlyCount;
-        Search(-CheckmateValue, CheckmateValue, 4, isRoot: true);
-        Console.WriteLine($"Evaluation: {Evaluate()}");
+        int allocatedTime = timer.MillisecondsRemaining / 2000;
+        int reachedDepth = 0;
+        for (int depth = 4; depth < 128; depth++)
+        {
+            Search(-CheckmateValue, CheckmateValue, depth, isRoot: true);
+            reachedDepth = depth;
+            if (timer.MillisecondsElapsedThisTurn > allocatedTime) break;
+        }
         return BestMove;
     }
 
@@ -72,6 +75,10 @@ public class MyBot : IChessBot
             if (alpha >= beta) return transValue;
         }
 
+        // Leaf Nodes
+        if (Board.IsInCheckmate()) return -CheckmateValue + Board.PlyCount - StartPly;
+        if (Board.IsDraw()) return DrawReluctancyValue;
+
         bool quiescence = depth <= 0;
         int bestValue = -CheckmateValue;
 
@@ -90,12 +97,12 @@ public class MyBot : IChessBot
         {
             Board.MakeMove(legalMove);
             var score = -Search(-beta, -alpha, depth - 1);
+            Board.UndoMove(legalMove);
             if (score >= beta)
             {
                 bestValue = score;
                 transposition.move = legalMove;
                 if (isRoot) BestMove = legalMove;
-                Board.UndoMove(legalMove);
                 break;
             }
             if (score > bestValue)
@@ -105,7 +112,6 @@ public class MyBot : IChessBot
                 if (isRoot) BestMove = legalMove;
                 if (score > alpha) alpha = score;
             }
-            Board.UndoMove(legalMove);
         }
 
         if (!quiescence && moves.Length == 0) { return Board.IsInCheck() ? -CheckmateValue + Board.PlyCount - StartPly : 0; }
@@ -131,7 +137,7 @@ public class MyBot : IChessBot
     {
         int score = 0;
         if (transposition.move == move && transposition.fullKey == Board.ZobristKey) score += 10000;
-        if (move.IsCapture) score += PieceTypeToValue[(int)move.CapturePieceType] - PieceTypeToValue[(int)move.MovePieceType];
+        if (move.IsCapture) score += PieceTypeToValue[(int)move.CapturePieceType] - (move.MovePieceType == PieceType.King ? CheckmateValue : PieceTypeToValue[(int)move.MovePieceType]);
         if (move.IsPromotion) score += PieceTypeToValue[(int)move.PromotionPieceType];
         return score;
     }
